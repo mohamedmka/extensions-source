@@ -4,14 +4,14 @@ plugins {
 
 keiyoushi {
     name = "The Library of Ohara"
-    versionCode = 2
+    versionCode = 3
     contentWarning = ContentWarning.SAFE
     libVersion = "1.4"
 
-    listOf("id", "en", "es", "it", "ar", "fr").forEach {
+    listOf("en", "es", "it", "ar", "fr").forEach {
         source {
             lang = it
-            baseUrl = "https://thelibraryofohara.com"
+            baseUrl = "https://procomic.net/ar"
         }
     }
 }
