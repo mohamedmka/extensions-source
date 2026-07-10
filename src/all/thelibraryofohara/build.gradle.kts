@@ -11,7 +11,7 @@ keiyoushi {
     listOf("en", "es", "it", "ar", "fr").forEach {
         source {
             lang = it
-            baseUrl = "https://procomic.net/ar"
+            baseUrl = "https://procomic.net/"
         }
     }
 }
