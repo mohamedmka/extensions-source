@@ -46,20 +46,16 @@ abstract class MangaTek :
     private var retryDelay: Int
         get() = preferences.getString(RETRY_DELAY_PREF, DEFAULT_RETRY_DELAY)!!.toInt()
         set(value) = preferences.edit().putString(RETRY_DELAY_PREF, value.toString()).apply()
-
     override val client by lazy {
         network.client.newBuilder()
             .addInterceptor(SpeechBubblePainterInterceptor(fontSize))
             .rateLimit(3)
             .build()
-    }
-
+    } 
     override fun headersBuilder() = super.headersBuilder()
         .add("Referer", "$baseUrl/")
-
     private val preferences: SharedPreferences by getPreferencesLazy()
     override val supportsLatest = true
-
     // Popular
     override fun popularMangaRequest(page: Int) = GET("$baseUrl/manga-list?sort=views&page=$page", headers)
     override fun popularMangaParse(response: Response): MangasPage {
@@ -71,15 +67,12 @@ abstract class MangaTek :
                 thumbnail_url = element.selectFirst("img")?.imgAttr()
             }
         }
-
         val hasNextPage = document.selectFirst("nav a[aria-disabled=false] .fa-chevron-left") != null
         return MangasPage(mangas, hasNextPage)
     }
-
     // Latest
     override fun latestUpdatesRequest(page: Int) = GET("$baseUrl/manga-list?page=$page", headers)
     override fun latestUpdatesParse(response: Response) = popularMangaParse(response)
-
     // Search
     override fun searchMangaRequest(page: Int, query: String, filters: FilterList): Request {
         val url = "$baseUrl/manga-list".toHttpUrl().newBuilder()
@@ -89,7 +82,6 @@ abstract class MangaTek :
 
         return GET(url, headers)
     }
-
     override fun searchMangaParse(response: Response) = popularMangaParse(response)
 
     // Details
@@ -123,10 +115,8 @@ abstract class MangaTek :
         val props = response.asJsoup()
             .selectFirst("astro-island[component-url*=MangaChaptersLoader]")
             ?.attr("props") ?: return emptyList()
-
         val data = props.parseAs<MangaWrapper>()
         val chapters = data.manga.value.mangaChapters.value.map { it.value }
-
         return chapters.map { ch ->
             SChapter.create().apply {
                 name = ch.title.value?.takeIf { it.isNotBlank() } ?: "Chapter ${ch.chapterNumber.value}"
