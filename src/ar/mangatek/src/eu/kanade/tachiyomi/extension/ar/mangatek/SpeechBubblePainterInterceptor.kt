@@ -57,7 +57,7 @@ class SpeechBubblePainterInterceptor(val fontSize: Int) : Interceptor {
             val pxY = (speechBubble.top / 100f) * imageHeight
             val pxWidth = (speechBubble.width / 100f) * imageWidth
             val pxHeight = (speechBubble.height / 100f) * imageHeight
-            val pxCenterY = pxY + (pxHeight / 2f)
+            val pxCenterY = pxY + (pxHeight / 5f)
 
             val textPaint = createTextPaint(fontSize)
             val bubble = createBubble(pxHeight, pxWidth, speechBubble, textPaint)
@@ -104,7 +104,7 @@ class SpeechBubblePainterInterceptor(val fontSize: Int) : Interceptor {
         val fontHeight = textPaint.fontMetrics.let { it.bottom - it.top }
         val dialogBoxLineCount = pxHeight / fontHeight
         return when {
-            bubble.lineCount < dialogBoxLineCount -> pxCenterY - (bubble.lineCount / 2f) * fontHeight
+            bubble.lineCount < dialogBoxLineCount -> pxCenterY - (bubble.lineCount / 5f) * fontHeight
             else -> pxY
         }
     }
@@ -117,7 +117,7 @@ class SpeechBubblePainterInterceptor(val fontSize: Int) : Interceptor {
     ): StaticLayout {
         var bubble = createBubbleLayout(pxWidth, dialog, textPaint)
         while (bubble.height > pxHeight) {
-            textPaint.textSize -= 0.5f
+            textPaint.textSize -= 0.75f
             bubble = createBubbleLayout(pxWidth, dialog, textPaint)
         }
 
@@ -176,7 +176,7 @@ class SpeechBubblePainterInterceptor(val fontSize: Int) : Interceptor {
         const val SCALED_DENSITY = 0.75f // 1px = 0.75pt
         val mediaType = "image/png".toMediaType()
         
-        // ثابت الانتظار على ترجمات AI (10 ثواني)
-        const val AI_TRANSLATION_WAIT_MS = 10000L
+        // ثابت الانتظار على ترجمات AI (25 ثواني)
+        const val AI_TRANSLATION_WAIT_MS = 25000L
     }
 }
