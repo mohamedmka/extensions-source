@@ -31,30 +31,23 @@ class SpeechBubblePainterInterceptor(val fontSize: Int, val enableDarkMode: Bool
         val url = request.url.toString()
         if (PAGE_REGEX.containsMatchIn(url).not()) {
             return chain.proceed(request)
-        }
+}
 
         PerformanceMonitor.startTimer()
-        
         val speechBubbles = request.url.fragment?.parseAs<List<Bubble>>()
             ?: emptyList()
-
         val imageRequest = request.newBuilder()
             .url(url)
             .build()
-
         val response = chain.proceed(imageRequest)
-
         if (response.isSuccessful.not()) {
             LoggerService.warning("Failed to load image: ${response.code}")
             return response
         }
-
         try {
             val bitmap = BitmapFactory.decodeStream(response.body.byteStream())!!
                 .copy(Bitmap.Config.ARGB_8888, true)
-
             val canvas = Canvas(bitmap)
-
             val imageWidth = bitmap.width.toFloat()
             val imageHeight = bitmap.height.toFloat()
 
@@ -114,7 +107,7 @@ class SpeechBubblePainterInterceptor(val fontSize: Int, val enableDarkMode: Bool
                     LoggerService.warning("Invalid bubble at index $index")
                     return@forEachIndexed
                 }
-
+    
                 val pxX = (speechBubble.left / 100f) * imageWidth
                 val pxY = (speechBubble.top / 100f) * imageHeight
                 val pxWidth = (speechBubble.width / 100f) * imageWidth
@@ -127,7 +120,7 @@ class SpeechBubblePainterInterceptor(val fontSize: Int, val enableDarkMode: Bool
 
                 // معالجة ذكية للنص: تنظيف وتحسين الترجمة
                 var cleanText = processTranslationText(speechBubble.text)
-                
+    
                 // التحقق من الذاكرة المؤقتة
                 val cacheKey = "${speechBubble.text.hashCode()}_$detectedType"
                 val cachedText = TranslationCache.get(cacheKey)
@@ -250,10 +243,9 @@ class SpeechBubblePainterInterceptor(val fontSize: Int, val enableDarkMode: Bool
 
         // إزالة علامات الترقيم الزائدة
         improved = improved.replace(Regex("([!?،।؛])\\1+"), "$1")
-
         return improved.trim()
     }
-
+    
     /**
      * إنشاء فقاعة مع تحجيم ذكي
      */
@@ -267,10 +259,10 @@ class SpeechBubblePainterInterceptor(val fontSize: Int, val enableDarkMode: Bool
     ): StaticLayout {
         var optimalTextSize = textPaint.textSize
         var bubble = createBubbleLayout(pxWidth, text, textPaint)
-
+        
         val maxAttempts = 20
         var attempts = 0
-
+        
         // تقليل حجم الخط تدريجياً
         while (bubble.height > pxHeight && attempts < maxAttempts) {
             optimalTextSize -= 0.5f
@@ -296,7 +288,7 @@ class SpeechBubblePainterInterceptor(val fontSize: Int, val enableDarkMode: Bool
             }
         }.build()
     }
-
+    
     /**
      * رسم خلفية الفقاعة مع تأثيرات
      */
@@ -308,8 +300,8 @@ class SpeechBubblePainterInterceptor(val fontSize: Int, val enableDarkMode: Bool
         angle: Float,
         width: Float,
         height: Float,
-        bgColor: Int
-    ) {
+        bgColor: Int)
+{
         try {
             canvas.save()
             canvas.translate(x, y)
@@ -347,16 +339,15 @@ class SpeechBubblePainterInterceptor(val fontSize: Int, val enableDarkMode: Bool
                 height + padding + 2,
                 8f,
                 8f,
-                shadowPaint
-            )
-
+                shadowPaint)
+            
             // رسم الحد
             val borderPaint = Paint().apply {
                 color = Color.BLACK
                 style = Paint.Style.STROKE
                 strokeWidth = 2.5f
             }
-
+            
             canvas.drawRoundRect(
                 -padding,
                 -padding,
@@ -364,15 +355,14 @@ class SpeechBubblePainterInterceptor(val fontSize: Int, val enableDarkMode: Bool
                 height + padding,
                 8f,
                 8f,
-                borderPaint
-            )
-
+                borderPaint)
+            
             canvas.restore()
         } catch (e: Exception) {
             LoggerService.warning("Error drawing bubble background: ${e.message}")
         }
     }
-
+    
     private fun createTextPaint(fontSize: Int, textColor: Int, bubbleType: String): TextPaint {
         val defaultTextSize = fontSize.pt
         return TextPaint().apply {
@@ -384,19 +374,18 @@ class SpeechBubblePainterInterceptor(val fontSize: Int, val enableDarkMode: Bool
                 textSize = defaultTextSize * 1.1f
                 typeface = android.graphics.Typeface.create(
                     android.graphics.Typeface.DEFAULT,
-                    android.graphics.Typeface.BOLD
-                )
+                    android.graphics.Typeface.BOLD)
             }
         }
     }
-
+    
     private fun getYAxis(
         pxY: Float,
         pxHeight: Float,
         pxCenterY: Float,
         textPaint: TextPaint,
-        bubble: StaticLayout,
-    ): Float {
+        bubble: StaticLayout,)
+  Float {
         val fontHeight = textPaint.fontMetrics.let { it.bottom - it.top }
         val dialogBoxLineCount = pxHeight / fontHeight
         return when {
@@ -418,7 +407,7 @@ class SpeechBubblePainterInterceptor(val fontSize: Int, val enableDarkMode: Bool
         textPaint.style = Paint.Style.FILL
         layout.draw(this)
     }
-
+    
     private fun Canvas.drawTextOutline(textPaint: TextPaint, layout: StaticLayout) {
         val foregroundColor = textPaint.color
         val style = textPaint.style
@@ -429,14 +418,14 @@ class SpeechBubblePainterInterceptor(val fontSize: Int, val enableDarkMode: Bool
         textPaint.color = foregroundColor
         textPaint.style = style
     }
-
+    
     private val Int.pt: Float get() = this / SCALED_DENSITY
-
+    
     companion object {
         const val SCALED_DENSITY = 0.75f
         const val MIN_FONT_SIZE = 6f
         val mediaType = "image/png".toMediaType()
-
+        
         // الانتظار على ترجمات AI
         const val AI_TRANSLATION_WAIT_MS = 60000L
         const val MAX_TRANSLATION_RETRIES = 10
