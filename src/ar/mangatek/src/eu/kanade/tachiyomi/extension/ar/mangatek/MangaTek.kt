@@ -12,10 +12,6 @@ import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.util.asJsoup
-import java.text.SimpleDateFormat
-import java.util.Locale
-import java.net.URLEncoder
-import kotlin.text.Charsets
 import keiyoushi.annotation.Source
 import keiyoushi.network.rateLimit
 import keiyoushi.utils.getPreferencesLazy
@@ -28,6 +24,10 @@ import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
+import java.net.URLEncoder
+import java.text.SimpleDateFormat
+import java.util.Locale
+import kotlin.text.Charsets
 
 @Source
 abstract class MangaTek :
@@ -165,7 +165,7 @@ abstract class MangaTek :
 
                         if (newPageDTOs.isNotEmpty() && newPageDTOs.any { it.hasSpeechBubbles() }) {
                             pageDTOs = newPageDTOs
-                            break 
+                            break
                         }
                     }
                 }
@@ -315,4 +315,4 @@ abstract class MangaTek :
         private const val RETRY_DELAY_PREF = "retryDelayPref"
         private const val DEFAULT_RETRY_DELAY = "5000"
     }
-}
+    }
