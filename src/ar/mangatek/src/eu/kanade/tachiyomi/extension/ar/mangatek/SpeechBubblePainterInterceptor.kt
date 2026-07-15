@@ -22,7 +22,7 @@ import kotlin.text.Charsets
 
 class SpeechBubblePainterInterceptor(
     private val fontSizeProvider: () -> Int,
-    @Suppress("unused") private val httpClient: OkHttpClient
+    @Suppress("unused") private val httpClient: OkHttpClient,
 ) : Interceptor {
 
     override fun intercept(chain: Interceptor.Chain): Response {
@@ -125,7 +125,7 @@ class SpeechBubblePainterInterceptor(
                     Layout.Alignment.ALIGN_CENTER,
                     1.0f,
                     0f,
-                    false
+                    false,
                 )
             }
 
