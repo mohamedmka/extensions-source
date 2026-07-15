@@ -35,21 +35,21 @@ class SpeechBubblePainterInterceptor(
         }
 
         val rawJsonFragment = urlString.substringAfterLast("#")
-        
+
         // Use safe standard Charsets to decode without hardcoded string parsing
         val decodedJson = try {
             URLDecoder.decode(rawJsonFragment, Charsets.UTF_8.name())
         } catch (e: Exception) {
             rawJsonFragment.replace("%23", "#")
         }
-        
+
         val bubbles = decodedJson.tryParse<List<Bubble>>() ?: return chain.proceed(request)
 
         // 2. Load the actual original clean image without the fragment metadata
         val cleanRequest = request.newBuilder()
             .url(urlString.substringBefore("#"))
             .build()
-            
+
         val originalResponse = chain.proceed(cleanRequest)
         if (!originalResponse.isSuccessful) return originalResponse
 
@@ -61,12 +61,12 @@ class SpeechBubblePainterInterceptor(
         bitmap.recycle()
 
         val canvas = Canvas(mutableBitmap)
-        
+
         // Define painting materials
         val textPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.BLACK
             textSize = fontSizeProvider().toFloat()
-            textAlign = Paint.Align.CENTER 
+            textAlign = Paint.Align.CENTER
         }
 
         val bubbleBackgroundPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -94,7 +94,7 @@ class SpeechBubblePainterInterceptor(
             val rectHeight = (bubble.height / 100f) * height
 
             canvas.save()
-            
+
             // Translate origin to the center of our targeted bubble coordinates
             canvas.translate(left + rectWidth / 2, top + rectHeight / 2)
             canvas.rotate(bubble.angle)
