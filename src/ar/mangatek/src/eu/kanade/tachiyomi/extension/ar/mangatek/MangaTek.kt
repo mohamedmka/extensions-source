@@ -238,13 +238,11 @@ abstract class MangaTek :
         else -> attr("abs:src")
     }
 
-    private fun Double.toFormattedString(): String {
-        return if (this % 1.0 == 0.0) this.toInt().toString() else this.toString()
+    private fun Double.toFormattedString(): String = if (this % 1.0 == 0.0) this.toInt().toString() else this.toString()
     }
 
     override fun setupPreferenceScreen(screen: PreferenceScreen) {
         val context = screen.context
-
         val fontSizePref = ListPreference(context).apply {
             key = FONT_SIZE_PREF
             title = "حجم خط الترجمة"
@@ -308,4 +306,4 @@ abstract class MangaTek :
         private const val RETRY_DELAY_PREF = "retryDelayPref"
         private const val DEFAULT_RETRY_DELAY = "5000"
     }
-    }
+}
