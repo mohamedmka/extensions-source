@@ -222,17 +222,14 @@ abstract class MangaTek :
             }
         }
     }
-
-    // Performs full, standard-safe URI encoding on serialized JSON
-    fun String.toFragment(): String {
-        return try {
-            // URLEncoder encodes spaces as '+' which can fail decoding in some setups;
-            // .replace("+", "%20") normalizes it safely.
-            "#${URLEncoder.encode(this, Charsets.UTF_8.name()).replace("+", "%20")}"
-        } catch (e: Exception) {
-            "#${this.replace("#", "%23")}"
-        }
-    }
+    
+// Performs full, standard-safe URI encoding on serialized JSON
+    fun String.toFragment(): String = try {
+        // URLEncoder encodes spaces as '+' which can fail decoding in some setups;
+        // .replace("+", "%20") normalizes it safely.
+        "#${URLEncoder.encode(this, Charsets.UTF_8.name()).replace("+", "%20")}"
+    } catch (e: Exception) {
+        "#${this.replace("#", "%23")}"
 
     override fun imageUrlParse(response: Response): String = throw UnsupportedOperationException()
 
