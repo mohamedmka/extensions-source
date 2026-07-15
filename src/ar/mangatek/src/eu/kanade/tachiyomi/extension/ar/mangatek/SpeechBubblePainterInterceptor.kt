@@ -5,7 +5,6 @@ import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
-import android.graphics.text.LineBreaker
 import android.os.Build
 import android.text.Layout
 import android.text.StaticLayout
@@ -13,8 +12,9 @@ import android.text.TextPaint
 import androidx.annotation.RequiresApi
 import eu.kanade.tachiyomi.extension.ar.mangatek.MangaTek.Companion.PAGE_REGEX
 import java.io.ByteArrayOutputStream
+import java.net.URLEncoder
+import java.nio.charset.StandardCharsets
 import keiyoushi.utils.parseAs
-import kotlin.math.max
 import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -22,17 +22,13 @@ import okhttp3.Request
 import okhttp3.Response
 import okhttp3.ResponseBody.Companion.toResponseBody
 import org.json.JSONObject
-import org.jsoup.Jsoup
 
 @RequiresApi(Build.VERSION_CODES.O)
 class SpeechBubblePainterInterceptor(
     val fontSize: Int,
     val enableDarkMode: Boolean = true,
-    // تمرير OkHttpClient لعمل طلبات الـ API
-    private val httpClient: OkHttpClient
+    private val httpClient: OkHttpClient,
 ) : Interceptor {
-
-    private val startTime = System.currentTimeMillis()
 
     override fun intercept(chain: Interceptor.Chain): Response {
         val request = chain.request()
@@ -58,7 +54,6 @@ class SpeechBubblePainterInterceptor(
             val imageWidth = bitmap.width.toFloat()
             val imageHeight = bitmap.height.toFloat()
 
-            // معالجة الفقاعات مع الذكاء الاصطناعي
             if (speechBubbles.isNotEmpty()) {
                 drawSpeechBubbles(canvas, speechBubbles, imageWidth, imageHeight, fontSize)
                 PerformanceMonitor.recordTiming("drawSpeechBubbles")
@@ -85,15 +80,12 @@ class SpeechBubblePainterInterceptor(
         }
     }
 
-    /**
-     * رسم الفقاعات النصية مع معالجة ذكية للترجمات وجلبها عبر AI
-     */
     private fun drawSpeechBubbles(
         canvas: Canvas,
         speechBubbles: List<Bubble>,
         imageWidth: Float,
         imageHeight: Float,
-        fontSize: Int
+        fontSize: Int,
     ) {
         var processedCount = 0
         var failedCount = 0
@@ -118,15 +110,11 @@ class SpeechBubblePainterInterceptor(
                 val cacheKey = "${speechBubble.text.hashCode()}_$detectedType"
                 var cleanText = TranslationCache.get(cacheKey)
 
-                // إذا لم تكن الترجمة في الذاكرة المؤقتة، قم بجلبها من الذكاء الاصطناعي
                 if (cleanText == null) {
                     LoggerService.info("Fetching AI translation for bubble $index")
                     val aiTranslation = fetchAiTranslationWithRetry(speechBubble.text)
-
-                    // معالجة ذكية للنص: تنظيف وتحسين الترجمة بعد جلبها
                     cleanText = processTranslationText(aiTranslation)
 
-                    // حفظ في الذاكرة المؤقتة
                     if (cleanText.isNotEmpty()) {
                         TranslationCache.put(cacheKey, cleanText)
                     }
@@ -148,13 +136,23 @@ class SpeechBubblePainterInterceptor(
                     cleanText,
                     speechBubble.angle,
                     textPaint,
-                    detectedType
+                    detectedType,
                 )
 
                 val finalY = getYAxis(pxY, pxHeight, pxCenterY, textPaint, bubble)
 
                 drawBubbleBackground(canvas, pxX, finalY, bubble, speechBubble.angle, pxWidth, pxHeight, bgColor)
-                canvas.draw(textPaint, bubble, speechBubble.angle, pxX, finalY)
+
+                canvas.save()
+                canvas.translate(pxX, finalY)
+                canvas.rotate(speechBubble.angle, 0f, 0f)
+                
+                // رسم حدود بيضاء حول الخط أولاً لزيادة وضوح القراءة (اختياري لكنه احترافي جداً في المانجا)
+                canvas.drawTextOutline(textPaint, bubble)
+                
+                // رسم النص الأساسي المترجم
+                bubble.draw(canvas)
+                canvas.restore()
 
                 processedCount++
                 LoggerService.info("Processed bubble $index: type=$detectedType, direction=$detectedDirection")
@@ -168,15 +166,12 @@ class SpeechBubblePainterInterceptor(
         LoggerService.info("Completed: $processedCount processed, $failedCount failed out of ${speechBubbles.size} total")
     }
 
-    /**
-     * آلية جلب الترجمة من الذكاء الاصطناعي مع نظام المحاولات المتكررة (Retries)
-     */
     private fun fetchAiTranslationWithRetry(originalText: String): String {
         var attempts = 0
         while (attempts < MAX_TRANSLATION_RETRIES) {
             try {
-                // ضع رابط API الذكاء الاصطناعي الخاص بك هنا (مثل ChatGPT, DeepL, أو خادمك الخاص)
-                val requestUrl = "https://api.your-ai-service.com/translate?text=${originalText.trim()}"
+                val encodedText = URLEncoder.encode(originalText.trim(), StandardCharsets.UTF_8.toString())
+                val requestUrl = "https://api.your-ai-service.com/translate?text=$encodedText"
 
                 val request = Request.Builder()
                     .url(requestUrl)
@@ -187,8 +182,6 @@ class SpeechBubblePainterInterceptor(
 
                 if (response.isSuccessful) {
                     val responseBody = response.body?.string() ?: ""
-
-                    // افترض أن الاستجابة بصيغة JSON وتحتوي على حقل "translated_text"
                     val json = JSONObject(responseBody)
                     return json.optString("translated_text", originalText)
                 } else {
@@ -200,36 +193,80 @@ class SpeechBubblePainterInterceptor(
 
             attempts++
             if (attempts < MAX_TRANSLATION_RETRIES) {
-                Thread.sleep(RETRY_DELAY_MS) // الانتظار قبل المحاولة التالية
+                Thread.sleep(RETRY_DELAY_MS)
             }
         }
-
-        // إذا فشلت كل المحاولات، قم بإرجاع النص الأصلي أو نص فارغ
         return originalText
     }
-
-    // ... [باقي الدوال مثل isValidBubble و processTranslationText تبقى كما هي في الكود الخاص بك] ...
 
     private fun Canvas.drawTextOutline(textPaint: TextPaint, layout: StaticLayout) {
         val foregroundColor = textPaint.color
         val style = textPaint.style
-        textPaint.strokeWidth = 5F
+        val strokeWidth = textPaint.strokeWidth
+        
+        textPaint.strokeWidth = 5f
         textPaint.color = Color.WHITE
         textPaint.style = Paint.Style.FILL_AND_STROKE
         layout.draw(this)
+        
         textPaint.color = foregroundColor
-        textPaint.style = style // تم تصحيح الخطأ الإملائي هنا (كانت sty le)
+        textPaint.style = style
+        textPaint.strokeWidth = strokeWidth
     }
 
-    // ... [باقي الكود] ...
+    private fun isValidBubble(bubble: Bubble): Boolean {
+        return bubble.text.isNotBlank()
+    }
+
+    private fun processTranslationText(text: String): String {
+        return text.trim()
+    }
+
+    private fun createTextPaint(size: Int, color: Int, type: String): TextPaint = TextPaint().apply {
+        this.textSize = size.toFloat()
+        this.color = color
+        this.isAntiAlias = true
+    }
+
+    private fun createBubbleWithIntelligentSizing(
+        h: Float,
+        w: Float,
+        text: String,
+        angle: Float,
+        paint: TextPaint,
+        type: String,
+    ): StaticLayout {
+        val widthLimit = w.toInt().coerceAtLeast(1)
+        return StaticLayout.Builder.obtain(text, 0, text.length, paint, widthLimit)
+            .setAlignment(Layout.Alignment.ALIGN_CENTER)
+            .build()
+    }
+
+    private fun getYAxis(
+        y: Float,
+        h: Float,
+        centerY: Float,
+        paint: TextPaint,
+        layout: StaticLayout,
+    ): Float = y
+
+    private fun drawBubbleBackground(
+        canvas: Canvas,
+        x: Float,
+        y: Float,
+        layout: StaticLayout,
+        angle: Float,
+        w: Float,
+        h: Float,
+        color: Int,
+    ) {}
 
     companion object {
         const val SCALED_DENSITY = 0.75f
         const val MIN_FONT_SIZE = 6f
         val mediaType = "image/png".toMediaType()
-
         const val AI_TRANSLATION_WAIT_MS = 60000L
-        const val MAX_TRANSLATION_RETRIES = 5 // قللت العدد لـ 5 لكي لا يطول الانتظار بشكل كبير
-        const val RETRY_DELAY_MS = 3000L // تم تعديلها ل 3 ثوان كفترة انتظار معقولة
+        const val MAX_TRANSLATION_RETRIES = 5
+        const val RETRY_DELAY_MS = 3000L
     }
 }
