@@ -284,9 +284,14 @@ abstract class MangaTek :
         screen.addPreference(maxRetriesPref)
         screen.addPreference(retryDelayPref)
 }
-   // ktlint-disable
-val PAGE_REGEX = Regex(""".*?\.(webp|png|jpg|jpeg)(?:\?[^#]*)?#.*""", RegexOption.IGNORE_CASE)
-// ktlint-enable
+class MangaTek : HttpSource() { // Ensure this matches your actual class name
+
+    // ... existing class code ...
+
+    companion object {
+        // ktlint-disable
+        val PAGE_REGEX = Regex(""".*?\.(webp|png|jpg|jpeg)(?:\?[^#]*)?#.*""", RegexOption.IGNORE_CASE)
+        // ktlint-enable
 
         private val CSS_LEFT_REGEX = Regex("""\bleft:\s*([\d.]+)\s*%""")
         private val CSS_TOP_REGEX = Regex("""\btop:\s*([\d.]+)\s*%""")
