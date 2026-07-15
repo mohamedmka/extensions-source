@@ -15,8 +15,6 @@ import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.util.asJsoup
-import java.text.SimpleDateFormat
-import java.util.Locale
 import keiyoushi.annotation.Source
 import keiyoushi.network.rateLimit
 import keiyoushi.utils.getPreferencesLazy
@@ -28,6 +26,8 @@ import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
+import java.text.SimpleDateFormat
+import java.util.Locale
 
 @RequiresApi(Build.VERSION_CODES.O)
 @Source
@@ -152,7 +152,7 @@ abstract class MangaTek :
         Thread.sleep(translationWaitTime.toLong())
 
         var pages = getPages(document)
-        var retries = 3
+        var retries = 0
 
         // إذا وجدنا صفحات ولكن بدون فقاعات نصية، نقوم بإعادة جلب (Re-fetch) الصفحة بالكامل
         while (pages.isNotEmpty() && pages.any { !it.hasSpeechBubbles() } && retries < maxRetries) {
@@ -210,7 +210,7 @@ abstract class MangaTek :
                             top = style.substringAfterLast("top:").substringBefore("%").trim().toFloatOrNull() ?: 0f,
                             width = style.substringAfterLast("width:").substringBefore("%").trim().toFloatOrNull() ?: 0f,
                             height = style.substringAfterLast("height:").substringBefore("%").trim().toFloatOrNull() ?: 0f,
-                            angle = style.substringAfterLast("angle:").substringBefore("deg").trim().toFloatOrNull() ?: 0f
+                            angle = style.substringAfterLast("angle:").substringBefore("deg").trim().toFloatOrNull() ?: 0f,
                         )
                     } catch (e: Exception) {
                         null
@@ -239,7 +239,6 @@ abstract class MangaTek :
 
     override fun setupPreferenceScreen(screen: PreferenceScreen) {
         // [نفس كود التفضيلات الذي كتبته أنت بدون تغيير لتقليل التشتت]
-        // ... (تم الحفاظ عليه كما هو في ملفك الأصلي)
     }
 
     companion object {
