@@ -6,10 +6,9 @@ plugins {
 
 keiyoushi {
     name = "MangaTek"
-    versionCode = 4
+    versionCode = 5
     contentWarning = ContentWarning.SAFE
     libVersion = "1.4"
-
     source {
         lang = "ar"
         baseUrl = "https://mangatek.com"
