@@ -1,9 +1,6 @@
 package eu.kanade.tachiyomi.extension.ar.mangatek
 
 import android.content.SharedPreferences
-import android.os.Build
-import android.widget.Toast
-import androidx.annotation.RequiresApi
 import androidx.preference.ListPreference
 import androidx.preference.PreferenceScreen
 import eu.kanade.tachiyomi.network.GET
@@ -17,6 +14,8 @@ import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.util.asJsoup
 import java.text.SimpleDateFormat
 import java.util.Locale
+import java.net.URLEncoder
+import kotlin.text.Charsets
 import keiyoushi.annotation.Source
 import keiyoushi.network.rateLimit
 import keiyoushi.utils.getPreferencesLazy
@@ -24,12 +23,12 @@ import keiyoushi.utils.parseAs
 import keiyoushi.utils.toJsonString
 import keiyoushi.utils.tryParse
 import okhttp3.HttpUrl.Companion.toHttpUrl
+import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 
-@RequiresApi(Build.VERSION_CODES.O)
 @Source
 abstract class MangaTek :
     HttpSource(),
@@ -37,26 +36,22 @@ abstract class MangaTek :
 
     private val preferences: SharedPreferences by getPreferencesLazy()
 
-    // الاستخدام الآمن للـ Preferences لتجنب انهيار التطبيق إذا كانت القيمة فارغة
-    private var fontSize: Int
+    private val fontSize: Int
         get() = preferences.getString(FONT_SIZE_PREF, DEFAULT_FONT_SIZE)?.toIntOrNull() ?: DEFAULT_FONT_SIZE.toInt()
-        set(value) = preferences.edit().putString(FONT_SIZE_PREF, value.toString()).apply()
 
-    private var translationWaitTime: Int
+    private val translationWaitTime: Int
         get() = preferences.getString(TRANSLATION_WAIT_PREF, DEFAULT_TRANSLATION_WAIT)?.toIntOrNull() ?: DEFAULT_TRANSLATION_WAIT.toInt()
-        set(value) = preferences.edit().putString(TRANSLATION_WAIT_PREF, value.toString()).apply()
 
-    private var maxRetries: Int
+    private val maxRetries: Int
         get() = preferences.getString(MAX_RETRIES_PREF, DEFAULT_MAX_RETRIES)?.toIntOrNull() ?: DEFAULT_MAX_RETRIES.toInt()
-        set(value) = preferences.edit().putString(MAX_RETRIES_PREF, value.toString()).apply()
 
-    private var retryDelay: Int
+    private val retryDelay: Int
         get() = preferences.getString(RETRY_DELAY_PREF, DEFAULT_RETRY_DELAY)?.toIntOrNull() ?: DEFAULT_RETRY_DELAY.toInt()
-        set(value) = preferences.edit().putString(RETRY_DELAY_PREF, value.toString()).apply()
 
-    override val client by lazy {
-        network.client.newBuilder()
-            .addInterceptor(SpeechBubblePainterInterceptor(fontSize))
+    override val client: OkHttpClient by lazy {
+        val baseClient = network.client
+        baseClient.newBuilder()
+            .addInterceptor(SpeechBubblePainterInterceptor({ fontSize }, httpClient = baseClient))
             .rateLimit(3)
             .build()
     }
@@ -66,7 +61,6 @@ abstract class MangaTek :
 
     override val supportsLatest = true
 
-    // Popular
     override fun popularMangaRequest(page: Int) = GET("$baseUrl/manga-list?sort=views&page=$page", headers)
 
     override fun popularMangaParse(response: Response): MangasPage {
@@ -82,11 +76,10 @@ abstract class MangaTek :
         return MangasPage(mangas, hasNextPage)
     }
 
-    // Latest
     override fun latestUpdatesRequest(page: Int) = GET("$baseUrl/manga-list?page=$page", headers)
+
     override fun latestUpdatesParse(response: Response) = popularMangaParse(response)
 
-    // Search
     override fun searchMangaRequest(page: Int, query: String, filters: FilterList): Request {
         val url = "$baseUrl/manga-list".toHttpUrl().newBuilder()
             .addQueryParameter("search", query)
@@ -97,7 +90,6 @@ abstract class MangaTek :
 
     override fun searchMangaParse(response: Response) = popularMangaParse(response)
 
-    // Details
     override fun mangaDetailsParse(response: Response): SManga {
         val document = response.asJsoup()
         return SManga.create().apply {
@@ -122,8 +114,7 @@ abstract class MangaTek :
         else -> SManga.UNKNOWN
     }
 
-    // Chapters
-    private val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US) // تأكد من مطابقة التنسيق الفعلي
+    private val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
 
     override fun chapterListParse(response: Response): List<SChapter> {
         val seriesSlug = response.request.url.toString().substringAfterLast("/")
@@ -136,54 +127,59 @@ abstract class MangaTek :
 
         return chapters.map { ch ->
             SChapter.create().apply {
-                name = ch.title.value?.takeIf { it.isNotBlank() } ?: "Chapter ${ch.chapterNumber.value}"
-                url = "/reader/$seriesSlug/${ch.chapterNumber.value}"
+                name = ch.title.value?.takeIf { it.isNotBlank() } ?: "Chapter ${ch.chapterNumber.value.toFormattedString()}"
+                url = "/reader/$seriesSlug/${ch.chapterNumber.value.toFormattedString()}"
                 date_upload = dateFormat.tryParse(ch.createdAt.value)
             }
         }
     }
 
-    // Page - نظام إعادة المحاولة المحسّن (يطلب الصفحة مجدداً)
     override fun pageListParse(response: Response): List<Page> {
-        var currentResponse = response
-        var document = currentResponse.asJsoup()
+        var document = response.asJsoup()
 
-        // الانتظار الأولي
-        Thread.sleep(translationWaitTime.toLong())
+        // Give server-side render script breathing room without triggering an app ANR crash
+        try {
+            Thread.sleep(translationWaitTime.toLong().coerceAtMost(10000L))
+        } catch (e: InterruptedException) {
+            // Restore interrupted status
+            Thread.currentThread().interrupt()
+        }
 
-        var pages = getPages(document)
-        var retries = 3
+        var pageDTOs = getPages(document)
+        var retries = 0
 
-        // إذا وجدنا صفحات ولكن بدون فقاعات نصية، نقوم بإعادة جلب (Re-fetch) الصفحة بالكامل
-        while (pages.isNotEmpty() && pages.any { !it.hasSpeechBubbles() } && retries < maxRetries) {
-            Thread.sleep(retryDelay.toLong())
+        while (pageDTOs.isNotEmpty() && pageDTOs.any { !it.hasSpeechBubbles() } && retries < maxRetries) {
+            try {
+                Thread.sleep(retryDelay.toLong())
+            } catch (e: InterruptedException) {
+                Thread.currentThread().interrupt()
+                break
+            }
 
             try {
-                // يجب إنشاء استجابة جديدة لجلب أحدث حالة للـ HTML من الخادم
-                val request = currentResponse.request
-                val newResponse = client.newCall(request).execute()
+                val request = response.request
+                client.newCall(request).execute().use { newResponse ->
+                    if (newResponse.isSuccessful) {
+                        document = newResponse.asJsoup()
+                        val newPageDTOs = getPages(document)
 
-                if (newResponse.isSuccessful) {
-                    currentResponse = newResponse
-                    document = currentResponse.asJsoup()
-                    val newPages = getPages(document)
-
-                    if (newPages.isNotEmpty() && newPages.any { it.hasSpeechBubbles() }) {
-                        pages = newPages
-                        break
+                        if (newPageDTOs.isNotEmpty() && newPageDTOs.any { it.hasSpeechBubbles() }) {
+                            pageDTOs = newPageDTOs
+                            break 
+                        }
                     }
                 }
             } catch (e: Exception) {
-                // في حالة فشل الاتصال، نتجاهل الخطأ لنحاول مرة أخرى في الدورة القادمة
+                // Ignore transient connectivity down times on loops
             }
-
             retries++
         }
 
-        return pages.mapIndexed { index, page ->
-            val imageUrl = when {
-                page.hasSpeechBubbles() -> "${page.imageUrl}${page.bubbles.toJsonString().toFragment()}"
-                else -> page.imageUrl
+        return pageDTOs.mapIndexed { index, pageDto ->
+            val imageUrl = if (pageDto.hasSpeechBubbles()) {
+                "${pageDto.imageUrl}${pageDto.bubbles.toJsonString().toFragment()}"
+            } else {
+                pageDto.imageUrl
             }
             Page(index, imageUrl = imageUrl)
         }
@@ -193,24 +189,27 @@ abstract class MangaTek :
         return document.select(".manga-page").mapNotNull { element ->
             try {
                 val imageUrl = element.selectFirst("img")?.imgAttr() ?: return@mapNotNull null
-
                 val overlays = element.select(".text-overlay")
                 val bubbles = overlays.mapNotNull { overlay ->
                     try {
                         val style = overlay.attr("style")
                         val text = overlay.text().trim()
 
-                        if (text.isEmpty() || !style.contains("left:") || !style.contains("top:")) {
-                            return@mapNotNull null
-                        }
+                        if (text.isEmpty()) return@mapNotNull null
+
+                        val leftValue = CSS_LEFT_REGEX.find(style)?.groupValues?.get(1)?.toFloatOrNull() ?: return@mapNotNull null
+                        val topValue = CSS_TOP_REGEX.find(style)?.groupValues?.get(1)?.toFloatOrNull() ?: return@mapNotNull null
+                        val widthValue = CSS_WIDTH_REGEX.find(style)?.groupValues?.get(1)?.toFloatOrNull() ?: 0f
+                        val heightValue = CSS_HEIGHT_REGEX.find(style)?.groupValues?.get(1)?.toFloatOrNull() ?: 0f
+                        val angleValue = CSS_ANGLE_REGEX.find(style)?.groupValues?.get(1)?.toFloatOrNull() ?: 0f
 
                         Bubble(
                             text = text,
-                            left = style.substringAfterLast("left:").substringBefore("%").trim().toFloatOrNull() ?: 0f,
-                            top = style.substringAfterLast("top:").substringBefore("%").trim().toFloatOrNull() ?: 0f,
-                            width = style.substringAfterLast("width:").substringBefore("%").trim().toFloatOrNull() ?: 0f,
-                            height = style.substringAfterLast("height:").substringBefore("%").trim().toFloatOrNull() ?: 0f,
-                            angle = style.substringAfterLast("angle:").substringBefore("deg").trim().toFloatOrNull() ?: 0f
+                            left = leftValue,
+                            top = topValue,
+                            width = widthValue,
+                            height = heightValue,
+                            angle = angleValue,
                         )
                     } catch (e: Exception) {
                         null
@@ -224,7 +223,16 @@ abstract class MangaTek :
         }
     }
 
-    fun String.toFragment(): String = "#${this.replace("#", "*")}"
+    // Performs full, standard-safe URI encoding on serialized JSON
+    fun String.toFragment(): String {
+        return try {
+            // URLEncoder encodes spaces as '+' which can fail decoding in some setups;
+            // .replace("+", "%20") normalizes it safely.
+            "#${URLEncoder.encode(this, Charsets.UTF_8.name()).replace("+", "%20")}"
+        } catch (e: Exception) {
+            "#${this.replace("#", "%23")}"
+        }
+    }
 
     override fun imageUrlParse(response: Response): String = throw UnsupportedOperationException()
 
@@ -235,26 +243,76 @@ abstract class MangaTek :
         hasAttr("data-lazy-src") -> attr("abs:data-lazy-src")
         hasAttr("data-cfsrc") -> attr("abs:data-cfsrc")
         else -> attr("abs:src")
-}
+    }
+
+    private fun Double.toFormattedString(): String {
+        return if (this % 1.0 == 0.0) this.toInt().toString() else this.toString()
+    }
 
     override fun setupPreferenceScreen(screen: PreferenceScreen) {
-        // [نفس كود التفضيلات الذي كتبته أنت بدون تغيير لتقليل التشتت]
-        // ... (تم الحفاظ عليه كما هو في ملفك الأصلي)
-}
+        val context = screen.context
+
+        val fontSizePref = ListPreference(context).apply {
+            key = FONT_SIZE_PREF
+            title = "حجم خط الترجمة"
+            summary = "%s"
+            entries = arrayOf("20", "24", "28", "32", "36", "40")
+            entryValues = arrayOf("20", "24", "28", "32", "36", "40")
+            setDefaultValue(DEFAULT_FONT_SIZE)
+        }
+
+        val translationWaitPref = ListPreference(context).apply {
+            key = TRANSLATION_WAIT_PREF
+            title = "وقت انتظار معالجة الترجمة"
+            summary = "%s"
+            entries = arrayOf("3 ثوانٍ", "5 ثوانٍ", "10 ثوانٍ (افتراضي)", "20 ثانية")
+            entryValues = arrayOf("3000", "5000", "10000", "20000")
+            setDefaultValue(DEFAULT_TRANSLATION_WAIT)
+        }
+
+        val maxRetriesPref = ListPreference(context).apply {
+            key = MAX_RETRIES_PREF
+            title = "أقصى عدد لمحاولات تحديث الصفحة"
+            summary = "%s محاولات"
+            entries = arrayOf("3 محاولات", "5 محاولات (افتراضي)", "8 محاولات", "10 محاولات")
+            entryValues = arrayOf("3", "5", "8", "10")
+            setDefaultValue(DEFAULT_MAX_RETRIES)
+        }
+
+        val retryDelayPref = ListPreference(context).apply {
+            key = RETRY_DELAY_PREF
+            title = "المدة الزمنية بين المحاولات"
+            summary = "%s"
+            entries = arrayOf("3 ثوانٍ", "5 ثوانٍ (افتراضي)", "7 ثوانٍ", "10 ثوانٍ")
+            entryValues = arrayOf("3000", "5000", "7000", "10000")
+            setDefaultValue(DEFAULT_RETRY_DELAY)
+        }
+
+        screen.addPreference(fontSizePref)
+        screen.addPreference(translationWaitPref)
+        screen.addPreference(maxRetriesPref)
+        screen.addPreference(retryDelayPref)
+    }
 
     companion object {
-        val PAGE_REGEX = Regex(""".*?\.(webp|png|jpg|jpeg)(?:\?v=\d+)?#\[.*?]""", RegexOption.IGNORE_CASE)
+        val PAGE_REGEX = Regex(""".*?\.(webp|png|jpg|jpeg)(?:\?[^#]*)?#.*""", RegexOption.IGNORE_CASE)
+
+        private val CSS_LEFT_REGEX = Regex("""\bleft:\s*([\d.]+)\s*%""")
+        private val CSS_TOP_REGEX = Regex("""\btop:\s*([\d.]+)\s*%""")
+        private val CSS_WIDTH_REGEX = Regex("""\bwidth:\s*([\d.]+)\s*%""")
+        private val CSS_HEIGHT_REGEX = Regex("""\bheight:\s*([\d.]+)\s*%""")
+        private val CSS_ANGLE_REGEX = Regex("""\bangle:\s*([\d.-]+)\s*deg""")
 
         private const val FONT_SIZE_PREF = "fontSizePref"
         private const val DEFAULT_FONT_SIZE = "28"
 
         private const val TRANSLATION_WAIT_PREF = "translationWaitPref"
-        private const val DEFAULT_TRANSLATION_WAIT = "35000" // 35 ثانية
+        private const val DEFAULT_TRANSLATION_WAIT = "10000"
 
         private const val MAX_RETRIES_PREF = "maxRetriesPref"
-        private const val DEFAULT_MAX_RETRIES = "5" // قمت بوضع 5 كقيمة افتراضية
+        private const val DEFAULT_MAX_RETRIES = "5"
 
         private const val RETRY_DELAY_PREF = "retryDelayPref"
-        private const val DEFAULT_RETRY_DELAY = "5000" // 5 ثوانٍ بين كل محاولة
+        private const val DEFAULT_RETRY_DELAY = "5000"
     }
 }
