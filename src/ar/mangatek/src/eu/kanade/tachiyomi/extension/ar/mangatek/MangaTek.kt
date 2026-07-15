@@ -15,6 +15,8 @@ import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.util.asJsoup
+import java.text.SimpleDateFormat
+import java.util.Locale
 import keiyoushi.annotation.Source
 import keiyoushi.network.rateLimit
 import keiyoushi.utils.getPreferencesLazy
@@ -26,8 +28,6 @@ import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
-import java.text.SimpleDateFormat
-import java.util.Locale
 
 @RequiresApi(Build.VERSION_CODES.O)
 @Source
@@ -68,6 +68,7 @@ abstract class MangaTek :
 
     // Popular
     override fun popularMangaRequest(page: Int) = GET("$baseUrl/manga-list?sort=views&page=$page", headers)
+
     override fun popularMangaParse(response: Response): MangasPage {
         val document = response.asJsoup()
         val mangas = document.select(".flex-grow .grid a").map { element ->
@@ -93,6 +94,7 @@ abstract class MangaTek :
             .build()
         return GET(url, headers)
     }
+
     override fun searchMangaParse(response: Response) = popularMangaParse(response)
 
     // Details
@@ -146,16 +148,16 @@ abstract class MangaTek :
         var currentResponse = response
         var document = currentResponse.asJsoup()
 
-        // الانتظار الأولي (لا يفضل استخدام Thread.sleep طويلاً على مسار الشبكة، لكن تركته كطلبك)
+        // الانتظار الأولي
         Thread.sleep(translationWaitTime.toLong())
 
         var pages = getPages(document)
-        var retries = 0
+        var retries = 3
 
         // إذا وجدنا صفحات ولكن بدون فقاعات نصية، نقوم بإعادة جلب (Re-fetch) الصفحة بالكامل
         while (pages.isNotEmpty() && pages.any { !it.hasSpeechBubbles() } && retries < maxRetries) {
             Thread.sleep(retryDelay.toLong())
- 
+
             try {
                 // يجب إنشاء استجابة جديدة لجلب أحدث حالة للـ HTML من الخادم
                 val request = currentResponse.request
@@ -201,20 +203,20 @@ abstract class MangaTek :
                         if (text.isEmpty() || !style.contains("left:") || !style.contains("top:")) {
                             return@mapNotNull null
                         }
-                   
+
                         Bubble(
                             text = text,
                             left = style.substringAfterLast("left:").substringBefore("%").trim().toFloatOrNull() ?: 0f,
                             top = style.substringAfterLast("top:").substringBefore("%").trim().toFloatOrNull() ?: 0f,
                             width = style.substringAfterLast("width:").substringBefore("%").trim().toFloatOrNull() ?: 0f,
                             height = style.substringAfterLast("height:").substringBefore("%").trim().toFloatOrNull() ?: 0f,
-                            angle = style.substringAfterLast("angle:").substringBefore("deg").trim().toFloatOrNull() ?: 0f,
+                            angle = style.substringAfterLast("angle:").substringBefore("deg").trim().toFloatOrNull() ?: 0f
                         )
                     } catch (e: Exception) {
                         null
                     }
                 }
-     
+
                 PageDTO(imageUrl, bubbles)
             } catch (e: Exception) {
                 null
