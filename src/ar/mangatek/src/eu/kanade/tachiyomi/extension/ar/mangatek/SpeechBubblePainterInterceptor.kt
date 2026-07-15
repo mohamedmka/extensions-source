@@ -12,21 +12,21 @@ import android.text.StaticLayout
 import android.text.TextPaint
 import androidx.annotation.RequiresApi
 import eu.kanade.tachiyomi.extension.ar.mangatek.MangaTek.Companion.PAGE_REGEX
+import java.io.ByteArrayOutputStream
 import keiyoushi.utils.parseAs
+import kotlin.math.max
 import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
 import okhttp3.ResponseBody.Companion.toResponseBody
-import org.jsoup.Jsoup
-import java.io.ByteArrayOutputStream
 import org.json.JSONObject
-import kotlin.math.max
+import org.jsoup.Jsoup
 
 @RequiresApi(Build.VERSION_CODES.O)
 class SpeechBubblePainterInterceptor(
-    val fontSize: Int, 
+    val fontSize: Int,
     val enableDarkMode: Boolean = true,
     private val httpClient: OkHttpClient // تمرير OkHttpClient لعمل طلبات الـ API
 ) : Interceptor {
@@ -130,7 +130,7 @@ class SpeechBubblePainterInterceptor(
                         TranslationCache.put(cacheKey, cleanText)
                     }
                 } else {
-                    LoggerService.info("Using cached translation for bubble $index")
+                    LoggerService.info("Using cached translation for pointer $index")
                 }
 
                 if (cleanText.isNullOrEmpty()) {
@@ -166,6 +166,7 @@ class SpeechBubblePainterInterceptor(
         TranslationCache.updateStats(processedCount, failedCount, 0)
         LoggerService.info("Completed: $processedCount processed, $failedCount failed out of ${speechBubbles.size} total")
     }
+
     /**
      * آلية جلب الترجمة من الذكاء الاصطناعي مع نظام المحاولات المتكررة (Retries)
      */
@@ -174,7 +175,6 @@ class SpeechBubblePainterInterceptor(
         while (attempts < MAX_TRANSLATION_RETRIES) {
             try {
                 // ضع رابط API الذكاء الاصطناعي الخاص بك هنا (مثل ChatGPT, DeepL, أو خادمك الخاص)
-                // تم وضع هذا كمثال للتوضيح
                 val requestUrl = "https://api.your-ai-service.com/translate?text=${originalText.trim()}"
 
                 val request = Request.Builder()
@@ -183,10 +183,10 @@ class SpeechBubblePainterInterceptor(
                     .build()
 
                 val response = httpClient.newCall(request).execute()
-    
+
                 if (response.isSuccessful) {
                     val responseBody = response.body?.string() ?: ""
-                    
+
                     // افترض أن الاستجابة بصيغة JSON وتحتوي على حقل "translated_text"
                     val json = JSONObject(responseBody)
                     return json.optString("translated_text", originalText)
@@ -196,15 +196,15 @@ class SpeechBubblePainterInterceptor(
             } catch (e: Exception) {
                 LoggerService.warning("AI Translation attempt ${attempts + 1} failed: ${e.message}")
             }
-            
+
             attempts++
             if (attempts < MAX_TRANSLATION_RETRIES) {
                 Thread.sleep(RETRY_DELAY_MS) // الانتظار قبل المحاولة التالية
             }
         }
-        
+
         // إذا فشلت كل المحاولات، قم بإرجاع النص الأصلي أو نص فارغ
-        return originalText 
+        return originalText
     }
 
     // ... [باقي الدوال مثل isValidBubble و processTranslationText تبقى كما هي في الكود الخاص بك] ...
@@ -219,16 +219,16 @@ class SpeechBubblePainterInterceptor(
         textPaint.color = foregroundColor
         textPaint.style = style // تم تصحيح الخطأ الإملائي هنا (كانت sty le)
     }
-    
+
     // ... [باقي الكود] ...
-    
+
     companion object {
         const val SCALED_DENSITY = 0.75f
         const val MIN_FONT_SIZE = 6f
         val mediaType = "image/png".toMediaType()
-        
+
         const val AI_TRANSLATION_WAIT_MS = 60000L
-        const val MAX_TRANSLATION_RETRIES = 3 // قللت العدد لـ 3 لكي لا يطول الانتظار بشكل كبير
-        const val RETRY_DELAY_MS = 2000L // تم تعديلها لثانيتين كفترة انتظار معقولة
+        const val MAX_TRANSLATION_RETRIES = 5 // قللت العدد لـ 5 لكي لا يطول الانتظار بشكل كبير
+        const val RETRY_DELAY_MS = 3000L // تم تعديلها ل 3 ثوان كفترة انتظار معقولة
     }
 }
