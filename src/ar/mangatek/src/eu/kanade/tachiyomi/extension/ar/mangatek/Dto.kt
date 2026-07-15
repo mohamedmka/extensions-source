@@ -81,12 +81,14 @@ class Bubble(
     val height: Float = 0.0f,
     val angle: Float = 0.0f,
     // ألوان مخصصة (اختيارية)
-    val bgColor: String? = null, // لون الخلفية (hex: #RRGGBB أو #AARRGGBB)
-    val textColor: String? = null, // لون النص (hex: #RRGGBB أو #AARRGGBB)
-    // نوع الفقاعة
-    val type: String = "normal", // normal, shout, whisper, thought
-    // اتجاه النص
-    val direction: String? = null // rtl أو ltr
+    // لون الخلفية (hex: #RRGGBB أو #AARRGGBB)
+    val bgColor: String? = null,
+    // لون النص (hex: #RRGGBB أو #AARRGGBB)
+    val textColor: String? = null,
+    // نوع الفقاعة: normal, shout, whisper, thought
+    val type: String = "normal",
+    // اتجاه النص: rtl أو ltr
+    val direction: String? = null
 ) {
     /**
      * كشف نوع الفقاعة تلقائياً بناءً على خصائص النص
