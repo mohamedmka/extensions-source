@@ -27,7 +27,7 @@ import kotlin.math.max
 @RequiresApi(Build.VERSION_CODES.O)
 class SpeechBubblePainterInterceptor(
     val fontSize: Int, 
-    val enableDarkMode: Boolean = false,
+    val enableDarkMode: Boolean = true,
     private val httpClient: OkHttpClient // تمرير OkHttpClient لعمل طلبات الـ API
 ) : Interceptor {
 
@@ -44,12 +44,12 @@ class SpeechBubblePainterInterceptor(
         val speechBubbles = request.url.fragment?.parseAs<List<Bubble>>() ?: emptyList()
         val imageRequest = request.newBuilder().url(url).build()
         val response = chain.proceed(imageRequest)
-        
+
         if (response.isSuccessful.not()) {
             LoggerService.warning("Failed to load image: ${response.code}")
             return response
         }
-        
+
         try {
             val bitmap = BitmapFactory.decodeStream(response.body.byteStream())!!
                 .copy(Bitmap.Config.ARGB_8888, true)
@@ -104,7 +104,7 @@ class SpeechBubblePainterInterceptor(
                     LoggerService.warning("Invalid bubble at index $index")
                     return@forEachIndexed
                 }
-    
+
                 val pxX = (speechBubble.left / 100f) * imageWidth
                 val pxY = (speechBubble.top / 100f) * imageHeight
                 val pxWidth = (speechBubble.width / 100f) * imageWidth
@@ -116,15 +116,15 @@ class SpeechBubblePainterInterceptor(
 
                 val cacheKey = "${speechBubble.text.hashCode()}_$detectedType"
                 var cleanText = TranslationCache.get(cacheKey)
-                
+
                 // إذا لم تكن الترجمة في الذاكرة المؤقتة، قم بجلبها من الذكاء الاصطناعي
                 if (cleanText == null) {
                     LoggerService.info("Fetching AI translation for bubble $index")
                     val aiTranslation = fetchAiTranslationWithRetry(speechBubble.text)
-                    
+
                     // معالجة ذكية للنص: تنظيف وتحسين الترجمة بعد جلبها
                     cleanText = processTranslationText(aiTranslation)
-                    
+
                     // حفظ في الذاكرة المؤقتة
                     if (cleanText.isNotEmpty()) {
                         TranslationCache.put(cacheKey, cleanText)
@@ -154,7 +154,7 @@ class SpeechBubblePainterInterceptor(
 
                 drawBubbleBackground(canvas, pxX, finalY, bubble, speechBubble.angle, pxWidth, pxHeight, bgColor)
                 canvas.draw(textPaint, bubble, speechBubble.angle, pxX, finalY)
-                
+
                 processedCount++
                 LoggerService.info("Processed bubble $index: type=$detectedType, direction=$detectedDirection")
             } catch (e: Exception) {
@@ -166,7 +166,6 @@ class SpeechBubblePainterInterceptor(
         TranslationCache.updateStats(processedCount, failedCount, 0)
         LoggerService.info("Completed: $processedCount processed, $failedCount failed out of ${speechBubbles.size} total")
     }
-
     /**
      * آلية جلب الترجمة من الذكاء الاصطناعي مع نظام المحاولات المتكررة (Retries)
      */
@@ -177,16 +176,17 @@ class SpeechBubblePainterInterceptor(
                 // ضع رابط API الذكاء الاصطناعي الخاص بك هنا (مثل ChatGPT, DeepL, أو خادمك الخاص)
                 // تم وضع هذا كمثال للتوضيح
                 val requestUrl = "https://api.your-ai-service.com/translate?text=${originalText.trim()}"
-                
+
                 val request = Request.Builder()
                     .url(requestUrl)
                     .addHeader("Authorization", "Bearer YOUR_API_KEY_HERE")
                     .build()
 
                 val response = httpClient.newCall(request).execute()
-                
+    
                 if (response.isSuccessful) {
                     val responseBody = response.body?.string() ?: ""
+                    
                     // افترض أن الاستجابة بصيغة JSON وتحتوي على حقل "translated_text"
                     val json = JSONObject(responseBody)
                     return json.optString("translated_text", originalText)
