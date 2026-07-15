@@ -1,372 +1,51 @@
 package eu.kanade.tachiyomi.extension.ar.mangatek
 
-import java.util.Collections
-import java.util.concurrent.ConcurrentHashMap
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.descriptors.SerialDescriptor
-import kotlinx.serialization.descriptors.buildClassSerialDescriptor
 import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.encoding.Encoder
-import kotlinx.serialization.json.JsonDecoder
+import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonPrimitive
+import java.util.Collections
+import java.util.concurrent.ConcurrentHashMap
 
 class WrappedSerializer<T>(val dataSerializer: KSerializer<T>) : KSerializer<Wrapped<T>> {
     override val descriptor: SerialDescriptor =
-        buildClassSerialDescriptor("Wrapped")
+        dataSerializer.descriptor
 
     override fun deserialize(decoder: Decoder): Wrapped<T> {
-        val input = decoder as? JsonDecoder ?: throw SerializationException("Expected Json Decoder")
-        val array = input.decodeJsonElement().jsonArray
-
-        // حماية مضافة: التحقق من أن المصفوفة تحتوي على عنصرين على الأقل لتجنب IndexOutOfBoundsException
-        if (array.size < 2) {
-            throw SerializationException("Wrapped data array must have at least 2 elements")
-        }
-
-        // array[0] هو المؤشر (index)، و array[1] هو المحتوى الفعلي
-        val index = array[0].jsonPrimitive.int
-        val value = input.json.decodeFromJsonElement(dataSerializer, array[1])
-
+        val json = (decoder as kotlinx.serialization.json.JsonDecoder).decodeJsonElement().jsonArray
+        val index = json[0].jsonPrimitive.int
+        val value = kotlinx.serialization.json.Json.decodeFromJsonElement(dataSerializer, json[1])
         return Wrapped(index, value)
     }
 
-    override fun serialize(encoder: Encoder, value: Wrapped<T>) {
+    override fun serialize(encoder: Encoder, value: Wrapped<T>): Unit =
         throw SerializationException("Serialization is not supported")
-    }
 }
 
 @Serializable(with = WrappedSerializer::class)
-class Wrapped<T>(
-    val index: Int,
-    val value: T,
-)
+class Wrapped<T>(val index: Int, val value: T)
 
 @Serializable
 class MangaWrapper(
-    val manga: Wrapped<MangaData>
+    val manga: Wrapped<MangaData>,
 )
 
 @Serializable
 class MangaData(
-    @SerialName("MangaChapters")
-    val mangaChapters: Wrapped<List<Wrapped<ChapterItem>>>,
-)
-
-@Serializable
-class ChapterItem(
-    @SerialName("chapter_number") val chapterNumber: Wrapped<String>,
     val title: Wrapped<String?>,
-    @SerialName("created_at") val createdAt: Wrapped<String?>,
+    val mangaChapters: Wrapped<List<Wrapped<ChapterData>>>,
 )
 
 @Serializable
-class PageDTO(
-    val imageUrl: String,
-    val bubbles: List<Bubble> = emptyList(),
-) {
-    fun hasSpeechBubbles(): Boolean = bubbles.isNotEmpty()
-}
-
-/**
- * بيانات الفقاعة النصية المحسّنة
- * مع دعم أنواع مختلفة من الفقاعات والذكاء الاصطناعي
- */
-@Serializable
-class Bubble(
-    val text: String = "",
-    val left: Float = 0.0f,
-    val top: Float = 0.0f,
-    val width: Float = 0.0f,
-    val height: Float = 0.0f,
-    val angle: Float = 0.0f,
-    // ألوان مخصصة (اختيارية)
-    // لون الخلفية (hex: #RRGGBB أو #AARRGGBB)
-    val bgColor: String? = null,
-    // لون النص (hex: #RRGGBB أو #AARRGGBB)
-    val textColor: String? = null,
-    // نوع الفقاعة: normal, shout, whisper, thought
-    val type: String = "normal",
-    // اتجاه النص: rtl أو ltr
-    val direction: String? = null,
-) {
-    /**
-     * كشف نوع الفقاعة تلقائياً بناءً على خصائص النص (يدعم العربية والإنجليزية)
-     */
-    fun detectBubbleType(): String = when {
-        text.isEmpty() -> "normal"
-        // كشف الصراخ بالعربية والإنجليزية اعتماداً على علامات التعجب المتكررة
-        (text.contains("!!!") || text.contains("!")) && text.length < 15 -> "shout"
-        // كشف الصراخ للحروف اللاتينية الكبيرة (فقط لو كان النص يحتوي على أحرف أجنبية لتجنب التأثير على النصوص العربية)
-        text.any { it.isLetter() } && text.filter { it.isLetter() }.all { it.isUpperCase() } -> "shout"
-        text.startsWith("(") && text.endsWith(")") -> "whisper"
-        text.startsWith("...") -> "thought"
-        else -> "normal"
-    }
-
-    /**
-     * كشف اتجاه النص (RTL للعربية، LTR للإنجليزية)
-     */
-    fun detectDirection(): String = when {
-        text.any { it.code in 0x0600..0x06FF } -> "rtl" // عربي
-        text.any { it.code in 0x0590..0x05FF } -> "rtl" // عبري
-        else -> "ltr"
-    }
-
-    fun getBackgroundColor(): Int = when {
-        bgColor != null -> hexToColor(bgColor, 0xFFFFFFFF.toInt())
-        type == "shout" -> 0xFFFFCC00.toInt()
-        type == "whisper" -> 0xFFE0E0E0.toInt()
-        type == "thought" -> 0xFFFFC0CB.toInt()
-        else -> 0xFFFFFFFF.toInt()
-    }
-
-    fun getTextColor(): Int = when {
-        textColor != null -> hexToColor(textColor, 0xFF000000.toInt())
-        type == "shout" -> 0xFF000000.toInt()
-        type == "whisper" -> 0xFF666666.toInt()
-        else -> 0xFF000000.toInt()
-    }
-
-    private fun hexToColor(hex: String, default: Int): Int {
-        return try {
-            val cleanHex = hex.removePrefix("#")
-            when (cleanHex.length) {
-                6 -> (0xFF000000 or cleanHex.toLong(16)).toInt()
-                8 -> cleanHex.toLong(16).toInt()
-                else -> default
-            }
-        } catch (e: Exception) {
-            default
-        }
-    }
-}
-
-@Serializable
-data class TranslationStats(
-    val totalBubbles: Int = 0,
-    val processedBubbles: Int = 0,
-    val failedBubbles: Int = 0,
-    val averageProcessingTime: Long = 0,
-    val cacheHits: Int = 0,
-    val cacheMisses: Int = 0,
-) {
-    val cacheHitRate: Float
-        get() = if (cacheHits + cacheMisses > 0) cacheHits.toFloat() / (cacheHits + cacheMisses) else 0f
-
-    val successRate: Float
-        get() = if (totalBubbles > 0) processedBubbles.toFloat() / totalBubbles else 0f
-}
-
-@Serializable
-data class LogEntry(
-    val timestamp: Long = System.currentTimeMillis(),
-    val level: String = "INFO",
-    val message: String = "",
-    val bubbleIndex: Int? = null,
-    val exception: String? = null,
+class ChapterData(
+    val title: Wrapped<String?>,
+    val chapterNumber: Wrapped<Double>,
+    val createdAt: Wrapped<String>,
 )
-
-object TranslationDictionary {
-    private val corrections = mapOf(
-        "ا الـ" to "ال",
-        "الـ " to "ال ",
-        "  " to " ",
-        "؟؟" to "؟",
-        "!!!" to "!",
-        "،،" to "،",
-        "ك ل" to "كل",
-        "ف ي" to "في",
-        "ع ن" to "عن"
-    )
-
-    private val arabicStopWords = setOf(
-        "ال", "و", "أو", "من", "في", "ب", "ل", "ك", "عن", "على", "إلى", "هذا", "ذلك"
-    )
-
-    fun correct(text: String): String {
-        var corrected = text
-        for ((wrong, correct) in corrections) {
-            corrected = corrected.replace(wrong, correct, ignoreCase = false)
-        }
-        return corrected.trim()
-    }
-
-    fun isStopWord(word: String): Boolean = arabicStopWords.contains(word)
-
-    fun removeStopWords(text: String): String {
-        return text.split(" ")
-            .filterNot { isStopWord(it) }
-            .joinToString(" ")
-    }
-}
-
-/**
- * مدير التخزين المؤقت للترجمات (Thread-Safe LRU Cache)
- */
-object TranslationCache {
-    private const val MAX_CACHE_SIZE = 1000
-
-    // إنشاء LRU Cache آمن للـ Threads
-    private val cache = Collections.synchronizedMap(
-        object : LinkedHashMap<String, String>(MAX_CACHE_SIZE, 0.75f, true) {
-            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, String>?): Boolean {
-                return size > MAX_CACHE_SIZE
-            }
-        }
-    )
-
-    @Volatile
-    private var stats = TranslationStats()
-
-    fun get(key: String): String? {
-        synchronized(this) {
-            val value = cache[key]
-            stats = if (value != null) {
-                stats.copy(cacheHits = stats.cacheHits + 1)
-            } else {
-                stats.copy(cacheMisses = stats.cacheMisses + 1)
-            }
-            return value
-        }
-    }
-
-    fun put(key: String, value: String) {
-        cache[key] = value
-    }
-
-    fun clear() {
-        cache.clear()
-        synchronized(this) {
-            stats = TranslationStats()
-        }
-    }
-
-    fun getStats(): TranslationStats = stats
-
-    @Synchronized
-    fun updateStats(processed: Int, failed: Int, time: Long) {
-        stats = stats.copy(
-            processedBubbles = stats.processedBubbles + processed,
-            failedBubbles = stats.failedBubbles + failed,
-            averageProcessingTime = (stats.averageProcessingTime + time) / 2
-        )
-    }
-}
-
-/**
- * نظام التسجيل المحسن للأداء (Thread-Safe & GC-Friendly Logging System)
- */
-object LoggerService {
-    private val logs = ArrayDeque<LogEntry>()
-    private const val MAX_LOG_SIZE = 500
-
-    @Volatile
-    private var enableLogging = true
-
-    fun info(message: String, bubbleIndex: Int? = null) {
-        if (enableLogging) {
-            addLog(LogEntry(level = "INFO", message = message, bubbleIndex = bubbleIndex))
-        }
-    }
-
-    fun warning(message: String, bubbleIndex: Int? = null) {
-        if (enableLogging) {
-            addLog(LogEntry(level = "WARNING", message = message, bubbleIndex = bubbleIndex))
-        }
-    }
-
-    fun error(message: String, exception: Exception? = null, bubbleIndex: Int? = null) {
-        if (enableLogging) {
-            addLog(
-                LogEntry(
-                    level = "ERROR",
-                    message = message,
-                    exception = exception?.message,
-                    bubbleIndex = bubbleIndex
-                )
-            )
-        }
-    }
-
-    @Synchronized
-    private fun addLog(entry: LogEntry) {
-        logs.add(entry)
-        if (logs.size > MAX_LOG_SIZE) {
-            logs.removeFirst()
-        }
-    }
-
-    @Synchronized
-    fun getLogs(): List<LogEntry> = logs.toList()
-
-    @Synchronized
-    fun clearLogs() {
-        logs.clear()
-    }
-
-    fun setLogging(enabled: Boolean) {
-        enableLogging = enabled
-    }
-}
-
-/**
- * نظام قياس الأداء المحسن والخفيف على الذاكرة (GC-Friendly Memory Performance Monitor)
- * تم الاستغناء عن الـ CopyOnWriteArrayList لتفادي حجز مصفوفات جديدة في كل عملية رصد،
- * والاعتماد بدلاً من ذلك على مجمع رقمي متزامن (O(1) Allocations).
- */
-object PerformanceMonitor {
-    private class OperationStats {
-        var totalMs: Long = 0
-        var count: Long = 0
-
-        @Synchronized
-        fun add(duration: Long) {
-            totalMs += duration
-            count++
-        }
-    }
-
-    private val timings = ConcurrentHashMap<String, OperationStats>()
-
-    /**
-     * دالة لقياس وقت التنفيذ بدقة عالية بالاعتماد على الـ Nano Seconds مع حماية الذاكرة
-     */
-    inline fun <T> measure(operationName: String, block: () -> T): T {
-        val start = System.nanoTime()
-        return try {
-            block()
-        } finally {
-            val durationMs = (System.nanoTime() - start) / 1_000_000
-            recordTiming(operationName, durationMs)
-        }
-    }
-
-    fun recordTiming(operationName: String, duration: Long) {
-        timings.getOrPut(operationName) { OperationStats() }.add(duration)
-    }
-
-    fun getAverageTime(operationName: String): Long {
-        val stats = timings[operationName] ?: return 0
-        return if (stats.count > 0) stats.totalMs / stats.count else 0
-    }
-
-    fun getReport(): String {
-        val sb = StringBuilder()
-        sb.appendLine("=== Performance Report ===")
-        timings.forEach { (operation, stats) ->
-            if (stats.count > 0) {
-                sb.appendLine("$operation: avg=${stats.totalMs / stats.count}ms, total=${stats.totalMs}ms, count=${stats.count}")
-            }
-        }
-        return sb.toString()
-    }
-
-    fun clear() {
-        timings.clear()
-    }
-}
