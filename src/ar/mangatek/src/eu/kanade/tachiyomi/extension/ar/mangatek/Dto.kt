@@ -39,7 +39,7 @@ class WrappedSerializer<T>(val dataSerializer: KSerializer<T>) : KSerializer<Wra
 @Serializable(with = WrappedSerializer::class)
 class Wrapped<T>(
     val index: Int,
-    val value: T
+    val value: T,
 )
 
 @Serializable
@@ -50,20 +50,20 @@ class MangaWrapper(
 @Serializable
 class MangaData(
     @SerialName("MangaChapters")
-    val mangaChapters: Wrapped<List<Wrapped<ChapterItem>>>
+    val mangaChapters: Wrapped<List<Wrapped<ChapterItem>>>,
 )
 
 @Serializable
 class ChapterItem(
     @SerialName("chapter_number") val chapterNumber: Wrapped<String>,
     val title: Wrapped<String?>,
-    @SerialName("created_at") val createdAt: Wrapped<String?>
+    @SerialName("created_at") val createdAt: Wrapped<String?>,
 )
 
 @Serializable
 class PageDTO(
     val imageUrl: String,
-    val bubbles: List<Bubble> = emptyList()
+    val bubbles: List<Bubble> = emptyList(),
 ) {
     fun hasSpeechBubbles(): Boolean = bubbles.isNotEmpty()
 }
@@ -88,7 +88,7 @@ class Bubble(
     // نوع الفقاعة: normal, shout, whisper, thought
     val type: String = "normal",
     // اتجاه النص: rtl أو ltr
-    val direction: String? = null
+    val direction: String? = null,
 ) {
     /**
      * كشف نوع الفقاعة تلقائياً بناءً على خصائص النص
@@ -148,7 +148,7 @@ data class TranslationStats(
     val failedBubbles: Int = 0,
     val averageProcessingTime: Long = 0,
     val cacheHits: Int = 0,
-    val cacheMisses: Int = 0
+    val cacheMisses: Int = 0,
 ) {
     val cacheHitRate: Float
         get() = if (cacheHits + cacheMisses > 0) cacheHits.toFloat() / (cacheHits + cacheMisses) else 0f
@@ -163,7 +163,7 @@ data class LogEntry(
     val level: String = "INFO",
     val message: String = "",
     val bubbleIndex: Int? = null,
-    val exception: String? = null
+    val exception: String? = null,
 )
 
 object TranslationDictionary {
