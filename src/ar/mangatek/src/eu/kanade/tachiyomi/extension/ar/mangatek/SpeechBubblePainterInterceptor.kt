@@ -28,7 +28,8 @@ import org.jsoup.Jsoup
 class SpeechBubblePainterInterceptor(
     val fontSize: Int,
     val enableDarkMode: Boolean = true,
-    private val httpClient: OkHttpClient // تمرير OkHttpClient لعمل طلبات الـ API
+    // تمرير OkHttpClient لعمل طلبات الـ API
+    private val httpClient: OkHttpClient
 ) : Interceptor {
 
     private val startTime = System.currentTimeMillis()
