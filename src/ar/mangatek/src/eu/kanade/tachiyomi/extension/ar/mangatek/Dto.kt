@@ -2,7 +2,6 @@ package eu.kanade.tachiyomi.extension.ar.mangatek
 
 import java.util.Collections
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.CopyOnWriteArrayList
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -23,6 +22,11 @@ class WrappedSerializer<T>(val dataSerializer: KSerializer<T>) : KSerializer<Wra
     override fun deserialize(decoder: Decoder): Wrapped<T> {
         val input = decoder as? JsonDecoder ?: throw SerializationException("Expected Json Decoder")
         val array = input.decodeJsonElement().jsonArray
+
+        // حماية مضافة: التحقق من أن المصفوفة تحتوي على عنصرين على الأقل لتجنب IndexOutOfBoundsException
+        if (array.size < 2) {
+            throw SerializationException("Wrapped data array must have at least 2 elements")
+        }
 
         // array[0] هو المؤشر (index)، و array[1] هو المحتوى الفعلي
         val index = array[0].jsonPrimitive.int
@@ -91,12 +95,14 @@ class Bubble(
     val direction: String? = null,
 ) {
     /**
-     * كشف نوع الفقاعة تلقائياً بناءً على خصائص النص
+     * كشف نوع الفقاعة تلقائياً بناءً على خصائص النص (يدعم العربية والإنجليزية)
      */
     fun detectBubbleType(): String = when {
         text.isEmpty() -> "normal"
-        text.count { it.isUpperCase() } > text.length * 0.6 -> "shout"
-        (text.contains("!!!") || text.contains("!")) && text.length < 10 -> "shout"
+        // كشف الصراخ بالعربية والإنجليزية اعتماداً على علامات التعجب المتكررة
+        (text.contains("!!!") || text.contains("!")) && text.length < 15 -> "shout"
+        // كشف الصراخ للحروف اللاتينية الكبيرة (فقط لو كان النص يحتوي على أحرف أجنبية لتجنب التأثير على النصوص العربية)
+        text.any { it.isLetter() } && text.filter { it.isLetter() }.all { it.isUpperCase() } -> "shout"
         text.startsWith("(") && text.endsWith(")") -> "whisper"
         text.startsWith("...") -> "thought"
         else -> "normal"
@@ -129,11 +135,10 @@ class Bubble(
     private fun hexToColor(hex: String, default: Int): Int {
         return try {
             val cleanHex = hex.removePrefix("#")
-            val color = cleanHex.toLongOrNull(16) ?: return default
-            if (cleanHex.length == 8) {
-                color.toInt() // يحتفظ بقيمة الشفافية (Alpha) إذا تم توفيرها
-            } else {
-                (color or 0xFF000000L).toInt() // يضيف شفافية كاملة تلقائياً
+            when (cleanHex.length) {
+                6 -> (0xFF000000 or cleanHex.toLong(16)).toInt()
+                8 -> cleanHex.toLong(16).toInt()
+                else -> default
             }
         } catch (e: Exception) {
             default
@@ -215,20 +220,19 @@ object TranslationCache {
         }
     )
 
-    // استخدام @Volatile لضمان مزامنة البيانات بين المسارات المختلفة بشكل آمن
     @Volatile
     private var stats = TranslationStats()
 
     fun get(key: String): String? {
-        val value = cache[key]
         synchronized(this) {
+            val value = cache[key]
             stats = if (value != null) {
                 stats.copy(cacheHits = stats.cacheHits + 1)
             } else {
                 stats.copy(cacheMisses = stats.cacheMisses + 1)
             }
+            return value
         }
-        return value
     }
 
     fun put(key: String, value: String) {
@@ -255,10 +259,10 @@ object TranslationCache {
 }
 
 /**
- * نظام التسجيل (Thread-Safe Logging System)
+ * نظام التسجيل المحسن للأداء (Thread-Safe & GC-Friendly Logging System)
  */
 object LoggerService {
-    private val logs = CopyOnWriteArrayList<LogEntry>()
+    private val logs = ArrayDeque<LogEntry>()
     private const val MAX_LOG_SIZE = 500
 
     @Volatile
@@ -293,12 +297,14 @@ object LoggerService {
     private fun addLog(entry: LogEntry) {
         logs.add(entry)
         if (logs.size > MAX_LOG_SIZE) {
-            logs.removeAt(0)
+            logs.removeFirst()
         }
     }
 
+    @Synchronized
     fun getLogs(): List<LogEntry> = logs.toList()
 
+    @Synchronized
     fun clearLogs() {
         logs.clear()
     }
@@ -309,39 +315,52 @@ object LoggerService {
 }
 
 /**
- * نظام تحسين الأداء والقياسات (Thread-Safe)
+ * نظام قياس الأداء المحسن والخفيف على الذاكرة (GC-Friendly Memory Performance Monitor)
+ * تم الاستغناء عن الـ CopyOnWriteArrayList لتفادي حجز مصفوفات جديدة في كل عملية رصد،
+ * والاعتماد بدلاً من ذلك على مجمع رقمي متزامن (O(1) Allocations).
  */
 object PerformanceMonitor {
-    private val timings = ConcurrentHashMap<String, CopyOnWriteArrayList<Long>>()
+    private class OperationStats {
+        var totalMs: Long = 0
+        var count: Long = 0
+
+        @Synchronized
+        fun add(duration: Long) {
+            totalMs += duration
+            count++
+        }
+    }
+
+    private val timings = ConcurrentHashMap<String, OperationStats>()
 
     /**
-     * دالة لقياس وقت التنفيذ بشكل آمن ومباشر
+     * دالة لقياس وقت التنفيذ بدقة عالية بالاعتماد على الـ Nano Seconds مع حماية الذاكرة
      */
     inline fun <T> measure(operationName: String, block: () -> T): T {
-        val start = System.currentTimeMillis()
+        val start = System.nanoTime()
         return try {
             block()
         } finally {
-            val duration = System.currentTimeMillis() - start
-            recordTiming(operationName, duration)
+            val durationMs = (System.nanoTime() - start) / 1_000_000
+            recordTiming(operationName, durationMs)
         }
     }
 
     fun recordTiming(operationName: String, duration: Long) {
-        timings.getOrPut(operationName) { CopyOnWriteArrayList() }.add(duration)
+        timings.getOrPut(operationName) { OperationStats() }.add(duration)
     }
 
     fun getAverageTime(operationName: String): Long {
-        val times = timings[operationName] ?: return 0
-        return if (times.isNotEmpty()) times.average().toLong() else 0
+        val stats = timings[operationName] ?: return 0
+        return if (stats.count > 0) stats.totalMs / stats.count else 0
     }
 
     fun getReport(): String {
         val sb = StringBuilder()
         sb.appendLine("=== Performance Report ===")
-        timings.forEach { (operation, times) ->
-            if (times.isNotEmpty()) {
-                sb.appendLine("$operation: avg=${times.average().toLong()}ms, total=${times.sum()}ms, count=${times.size}")
+        timings.forEach { (operation, stats) ->
+            if (stats.count > 0) {
+                sb.appendLine("$operation: avg=${stats.totalMs / stats.count}ms, total=${stats.totalMs}ms, count=${stats.count}")
             }
         }
         return sb.toString()
