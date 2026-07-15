@@ -283,10 +283,11 @@ abstract class MangaTek :
         screen.addPreference(translationWaitPref)
         screen.addPreference(maxRetriesPref)
         screen.addPreference(retryDelayPref)
-    }
+}
 
     companion object {
-        val PAGE_REGEX = Regex(""".*?\.(webp|png|jpg|jpeg)(?:\?[^#]*)?#.*""", RegexOption.IGNORE_CASE)
+    val PAGE_REGEX = Regex(".*?\\.(webp|png|jpg|jpeg)(?:\\?[^#]*)?#.*", RegexOption.IGNORE_CASE)
+}
 
         private val CSS_LEFT_REGEX = Regex("""\bleft:\s*([\d.]+)\s*%""")
         private val CSS_TOP_REGEX = Regex("""\btop:\s*([\d.]+)\s*%""")
