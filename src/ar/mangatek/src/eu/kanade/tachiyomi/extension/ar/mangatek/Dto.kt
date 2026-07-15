@@ -12,6 +12,9 @@ import kotlinx.serialization.json.JsonDecoder
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonPrimitive
+import java.util.Collections
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CopyOnWriteArrayList
 
 class WrappedSerializer<T>(val dataSerializer: KSerializer<T>) : KSerializer<Wrapped<T>> {
     override val descriptor: SerialDescriptor =
@@ -28,7 +31,8 @@ class WrappedSerializer<T>(val dataSerializer: KSerializer<T>) : KSerializer<Wra
         return Wrapped(index, value)
     }
 
-    override fun serialize(encoder: Encoder, value: Wrapped<T>) = throw SerializationException("Serialization is not supported")
+    override fun serialize(encoder: Encoder, value: Wrapped<T>) = 
+        throw SerializationException("Serialization is not supported")
 }
 
 @Serializable(with = WrappedSerializer::class)
@@ -76,8 +80,8 @@ class Bubble(
     val height: Float = 0.0f,
     val angle: Float = 0.0f,
     // ألوان مخصصة (اختيارية)
-    val bgColor: String? = null,  // لون الخلفية (hex: #RRGGBB)
-    val textColor: String? = null, // لون النص (hex: #RRGGBB)
+    val bgColor: String? = null,  // لون الخلفية (hex: #RRGGBB أو #AARRGGBB)
+    val textColor: String? = null, // لون النص (hex: #RRGGBB أو #AARRGGBB)
     // نوع الفقاعة
     val type: String = "normal", // normal, shout, whisper, thought
     // اتجاه النص
@@ -85,14 +89,13 @@ class Bubble(
 ) {
     /**
      * كشف نوع الفقاعة من النص
-     * - Shout: نص بأحرف كبيرة أو بعلامات تعجب
-     * - Whisper: نص صغير أو بين قوسين
-     * - Thought: نص عادي
      */
     fun detectBubbleType(): String {
+        if (text.isEmpty()) return "normal"
+
         return when {
             text.count { it.isUpperCase() } > text.length * 0.6 -> "shout"
-            text.contains("!!!") || text.contains("!") && text.length < 10 -> "shout"
+            (text.contains("!!!") || text.contains("!")) && text.length < 10 -> "shout"
             text.startsWith("(") && text.endsWith(")") -> "whisper"
             text.startsWith("...") -> "thought"
             else -> "normal"
@@ -110,44 +113,40 @@ class Bubble(
         }
     }
 
-    /**
-     * الحصول على لون الخلفية المناسب
-     */
     fun getBackgroundColor(): Int {
         return when {
-            bgColor != null -> hexToColor(bgColor)
-            type == "shout" -> 0xFFFFCC00.toInt() // أصفر للصرخات
-            type == "whisper" -> 0xFFE0E0E0.toInt() // رمادي فاتح للهمس
-            type == "thought" -> 0xFFFFC0CB.toInt() // وردي للأفكار
-            else -> 0xFFFFFFFF.toInt() // أبيض للعادي
+            bgColor != null -> hexToColor(bgColor, 0xFFFFFFFF.toInt())
+            type == "shout" -> 0xFFFFCC00.toInt()
+            type == "whisper" -> 0xFFE0E0E0.toInt()
+            type == "thought" -> 0xFFFFC0CB.toInt()
+            else -> 0xFFFFFFFF.toInt()
         }
     }
 
-    /**
-     * الحصول على لون النص المناسب
-     */
     fun getTextColor(): Int {
         return when {
-            textColor != null -> hexToColor(textColor)
-            type == "shout" -> 0xFF000000.toInt() // أسود للصرخات
-            type == "whisper" -> 0xFF666666.toInt() // رمادي غامق للهمس
-            else -> 0xFF000000.toInt() // أسود عادي
+            textColor != null -> hexToColor(textColor, 0xFF000000.toInt())
+            type == "shout" -> 0xFF000000.toInt()
+            type == "whisper" -> 0xFF666666.toInt()
+            else -> 0xFF000000.toInt()
         }
     }
 
-    private fun hexToColor(hex: String): Int {
+    private fun hexToColor(hex: String, default: Int): Int {
         return try {
-            val color = hex.removePrefix("#").toLong(16)
-            (color or 0xFF000000L).toInt()
+            val cleanHex = hex.removePrefix("#")
+            val color = cleanHex.toLongOrNull(16) ?: return default
+            if (cleanHex.length == 8) {
+                color.toInt() // يحتفظ بقيمة الشفافية إذا تم توفيرها
+            } else {
+                (color or 0xFF000000L).toInt() // يضيف شفافية كاملة
+            }
         } catch (e: Exception) {
-            0xFFFFFFFF.toInt()
+            default
         }
     }
 }
 
-/**
- * بيانات إحصائيات الترجمات
- */
 @Serializable
 data class TranslationStats(
     val totalBubbles: Int = 0,
@@ -164,31 +163,23 @@ data class TranslationStats(
         get() = if (totalBubbles > 0) processedBubbles.toFloat() / totalBubbles else 0f
 }
 
-/**
- * سجل الأخطاء والعمليات (للتتبع والمراقبة)
- */
 @Serializable
 data class LogEntry(
     val timestamp: Long = System.currentTimeMillis(),
-    val level: String = "INFO", // INFO, WARNING, ERROR
+    val level: String = "INFO",
     val message: String = "",
     val bubbleIndex: Int? = null,
     val exception: String? = null,
 )
 
-/**
- * قاموس محلي لتحسين الترجمات
- */
 object TranslationDictionary {
     private val corrections = mapOf(
-        // أخطاء إملائية شائعة
         "ا الـ" to "ال",
         "الـ " to "ال ",
         "  " to " ",
         "؟؟" to "؟",
         "!!!" to "!",
         "،،" to "،",
-        // اختصارات شائعة
         "ك ل" to "كل",
         "ف ي" to "في",
         "ع ن" to "عن",
@@ -216,39 +207,50 @@ object TranslationDictionary {
 }
 
 /**
- * مدير التخزين المؤقت للترجمات
+ * مدير التخزين المؤقت للترجمات (Thread-Safe LRU Cache)
  */
 object TranslationCache {
-    private val cache = mutableMapOf<String, String>()
-    private var maxCacheSize = 1000
+    private const val MAX_CACHE_SIZE = 1000
+
+    // إنشاء LRU Cache آمن
+    private val cache = Collections.synchronizedMap(
+        object : LinkedHashMap<String, String>(MAX_CACHE_SIZE, 0.75f, true) {
+            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, String>?): Boolean {
+                return size > MAX_CACHE_SIZE
+            }
+        }
+    )
+    
+    // استخدام @Volatile لضمان تحديث القيم بشكل آمن بين المسارات (Threads)
+    @Volatile
     private var stats = TranslationStats()
 
     fun get(key: String): String? {
         val value = cache[key]
-        if (value != null) {
-            stats = stats.copy(cacheHits = stats.cacheHits + 1)
-        } else {
-            stats = stats.copy(cacheMisses = stats.cacheMisses + 1)
+        synchronized(this) {
+            stats = if (value != null) {
+                stats.copy(cacheHits = stats.cacheHits + 1)
+            } else {
+                stats.copy(cacheMisses = stats.cacheMisses + 1)
+            }
         }
         return value
     }
 
     fun put(key: String, value: String) {
-        if (cache.size >= maxCacheSize) {
-            // حذف أقدم 10% من العناصر
-            val itemsToRemove = cache.size / 10
-            cache.entries.take(itemsToRemove).forEach { cache.remove(it.key) }
-        }
         cache[key] = value
     }
 
     fun clear() {
         cache.clear()
-        stats = TranslationStats()
+        synchronized(this) {
+            stats = TranslationStats()
+        }
     }
 
     fun getStats(): TranslationStats = stats
 
+    @Synchronized
     fun updateStats(processed: Int, failed: Int, time: Long) {
         stats = stats.copy(
             processedBubbles = stats.processedBubbles + processed,
@@ -259,11 +261,13 @@ object TranslationCache {
 }
 
 /**
- * نظام التسجيل (Logging System)
+ * نظام التسجيل (Thread-Safe Logging System)
  */
 object LoggerService {
-    private val logs = mutableListOf<LogEntry>()
-    private var maxLogSize = 500
+    private val logs = CopyOnWriteArrayList<LogEntry>()
+    private const val MAX_LOG_SIZE = 500
+
+    @Volatile
     private var enableLogging = true
 
     fun info(message: String, bubbleIndex: Int? = null) {
@@ -291,11 +295,12 @@ object LoggerService {
         }
     }
 
+    @Synchronized
     private fun addLog(entry: LogEntry) {
-        if (logs.size >= maxLogSize) {
+        logs.add(entry)
+        if (logs.size > MAX_LOG_SIZE) {
             logs.removeAt(0)
         }
-        logs.add(entry)
     }
 
     fun getLogs(): List<LogEntry> = logs.toList()
@@ -308,21 +313,28 @@ object LoggerService {
 }
 
 /**
- * نظام تحسين الأداء والقياسات
+ * نظام تحسين الأداء والقياسات (Thread-Safe)
  */
 object PerformanceMonitor {
-    private val timings = mutableMapOf<String, MutableList<Long>>()
-    private var startTime = 0L
+    private val timings = ConcurrentHashMap<String, CopyOnWriteArrayList<Long>>()
 
-    fun startTimer() {
-        startTime = System.currentTimeMillis()
+    /**
+     * دالة جديدة لقياس الوقت بشكل آمن لتعدد المسارات.
+     * الاستخدام: 
+     * val result = PerformanceMonitor.measure("fetchData") { ...code... }
+     */
+    inline fun <T> measure(operationName: String, block: () -> T): T {
+        val start = System.currentTimeMillis()
+        return try {
+            block()
+        } finally {
+            val duration = System.currentTimeMillis() - start
+            recordTiming(operationName, duration)
+        }
     }
 
-    fun recordTiming(operationName: String) {
-        if (startTime == 0L) return
-        val duration = System.currentTimeMillis() - startTime
-        timings.getOrPut(operationName) { mutableListOf() }.add(duration)
-        startTime = 0L
+    fun recordTiming(operationName: String, duration: Long) {
+        timings.getOrPut(operationName) { CopyOnWriteArrayList() }.add(duration)
     }
 
     fun getAverageTime(operationName: String): Long {
@@ -334,7 +346,9 @@ object PerformanceMonitor {
         val sb = StringBuilder()
         sb.appendLine("=== Performance Report ===")
         timings.forEach { (operation, times) ->
-            sb.appendLine("$operation: avg=${times.average().toLong()}ms, total=${times.sum()}ms, count=${times.size}")
+            if (times.isNotEmpty()) {
+                sb.appendLine("$operation: avg=${times.average().toLong()}ms, total=${times.sum()}ms, count=${times.size}")
+            }
         }
         return sb.toString()
     }
