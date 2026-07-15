@@ -1,5 +1,8 @@
 package eu.kanade.tachiyomi.extension.ar.mangatek
 
+import java.util.Collections
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CopyOnWriteArrayList
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -12,9 +15,6 @@ import kotlinx.serialization.json.JsonDecoder
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonPrimitive
-import java.util.Collections
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.CopyOnWriteArrayList
 
 class WrappedSerializer<T>(val dataSerializer: KSerializer<T>) : KSerializer<Wrapped<T>> {
     override val descriptor: SerialDescriptor =
@@ -24,47 +24,48 @@ class WrappedSerializer<T>(val dataSerializer: KSerializer<T>) : KSerializer<Wra
         val input = decoder as? JsonDecoder ?: throw SerializationException("Expected Json Decoder")
         val array = input.decodeJsonElement().jsonArray
 
-        // array[0] is the index, array[1] is the content
+        // array[0] هو المؤشر (index)، و array[1] هو المحتوى الفعلي
         val index = array[0].jsonPrimitive.int
         val value = input.json.decodeFromJsonElement(dataSerializer, array[1])
 
         return Wrapped(index, value)
     }
 
-    override fun serialize(encoder: Encoder, value: Wrapped<T>) = 
+    override fun serialize(encoder: Encoder, value: Wrapped<T>) {
         throw SerializationException("Serialization is not supported")
+    }
 }
 
 @Serializable(with = WrappedSerializer::class)
 class Wrapped<T>(
     val index: Int,
-    val value: T,
+    val value: T
 )
 
 @Serializable
 class MangaWrapper(
-    val manga: Wrapped<MangaData>,
+    val manga: Wrapped<MangaData>
 )
 
 @Serializable
 class MangaData(
     @SerialName("MangaChapters")
-    val mangaChapters: Wrapped<List<Wrapped<ChapterItem>>>,
+    val mangaChapters: Wrapped<List<Wrapped<ChapterItem>>>
 )
 
 @Serializable
 class ChapterItem(
     @SerialName("chapter_number") val chapterNumber: Wrapped<String>,
     val title: Wrapped<String?>,
-    @SerialName("created_at") val createdAt: Wrapped<String?>,
+    @SerialName("created_at") val createdAt: Wrapped<String?>
 )
 
 @Serializable
 class PageDTO(
     val imageUrl: String,
-    val bubbles: List<Bubble> = emptyList(),
+    val bubbles: List<Bubble> = emptyList()
 ) {
-    fun hasSpeechBubbles() = bubbles.isNotEmpty()
+    fun hasSpeechBubbles(): Boolean = bubbles.isNotEmpty()
 }
 
 /**
@@ -80,56 +81,47 @@ class Bubble(
     val height: Float = 0.0f,
     val angle: Float = 0.0f,
     // ألوان مخصصة (اختيارية)
-    val bgColor: String? = null,  // لون الخلفية (hex: #RRGGBB أو #AARRGGBB)
+    val bgColor: String? = null, // لون الخلفية (hex: #RRGGBB أو #AARRGGBB)
     val textColor: String? = null, // لون النص (hex: #RRGGBB أو #AARRGGBB)
     // نوع الفقاعة
     val type: String = "normal", // normal, shout, whisper, thought
     // اتجاه النص
-    val direction: String? = null, // rtl أو ltr
+    val direction: String? = null // rtl أو ltr
 ) {
     /**
-     * كشف نوع الفقاعة من النص
+     * كشف نوع الفقاعة تلقائياً بناءً على خصائص النص
      */
-    fun detectBubbleType(): String {
-        if (text.isEmpty()) return "normal"
-
-        return when {
-            text.count { it.isUpperCase() } > text.length * 0.6 -> "shout"
-            (text.contains("!!!") || text.contains("!")) && text.length < 10 -> "shout"
-            text.startsWith("(") && text.endsWith(")") -> "whisper"
-            text.startsWith("...") -> "thought"
-            else -> "normal"
-        }
+    fun detectBubbleType(): String = when {
+        text.isEmpty() -> "normal"
+        text.count { it.isUpperCase() } > text.length * 0.6 -> "shout"
+        (text.contains("!!!") || text.contains("!")) && text.length < 10 -> "shout"
+        text.startsWith("(") && text.endsWith(")") -> "whisper"
+        text.startsWith("...") -> "thought"
+        else -> "normal"
     }
 
     /**
      * كشف اتجاه النص (RTL للعربية، LTR للإنجليزية)
      */
-    fun detectDirection(): String {
-        return when {
-            text.any { it.code in 0x0600..0x06FF } -> "rtl" // عربي
-            text.any { it.code in 0x0590..0x05FF } -> "rtl" // عبري
-            else -> "ltr"
-        }
+    fun detectDirection(): String = when {
+        text.any { it.code in 0x0600..0x06FF } -> "rtl" // عربي
+        text.any { it.code in 0x0590..0x05FF } -> "rtl" // عبري
+        else -> "ltr"
     }
 
-    fun getBackgroundColor(): Int {
-        return when {
-            bgColor != null -> hexToColor(bgColor, 0xFFFFFFFF.toInt())
-            type == "shout" -> 0xFFFFCC00.toInt()
-            type == "whisper" -> 0xFFE0E0E0.toInt()
-            type == "thought" -> 0xFFFFC0CB.toInt()
-            else -> 0xFFFFFFFF.toInt()
-        }
+    fun getBackgroundColor(): Int = when {
+        bgColor != null -> hexToColor(bgColor, 0xFFFFFFFF.toInt())
+        type == "shout" -> 0xFFFFCC00.toInt()
+        type == "whisper" -> 0xFFE0E0E0.toInt()
+        type == "thought" -> 0xFFFFC0CB.toInt()
+        else -> 0xFFFFFFFF.toInt()
     }
 
-    fun getTextColor(): Int {
-        return when {
-            textColor != null -> hexToColor(textColor, 0xFF000000.toInt())
-            type == "shout" -> 0xFF000000.toInt()
-            type == "whisper" -> 0xFF666666.toInt()
-            else -> 0xFF000000.toInt()
-        }
+    fun getTextColor(): Int = when {
+        textColor != null -> hexToColor(textColor, 0xFF000000.toInt())
+        type == "shout" -> 0xFF000000.toInt()
+        type == "whisper" -> 0xFF666666.toInt()
+        else -> 0xFF000000.toInt()
     }
 
     private fun hexToColor(hex: String, default: Int): Int {
@@ -137,9 +129,9 @@ class Bubble(
             val cleanHex = hex.removePrefix("#")
             val color = cleanHex.toLongOrNull(16) ?: return default
             if (cleanHex.length == 8) {
-                color.toInt() // يحتفظ بقيمة الشفافية إذا تم توفيرها
+                color.toInt() // يحتفظ بقيمة الشفافية (Alpha) إذا تم توفيرها
             } else {
-                (color or 0xFF000000L).toInt() // يضيف شفافية كاملة
+                (color or 0xFF000000L).toInt() // يضيف شفافية كاملة تلقائياً
             }
         } catch (e: Exception) {
             default
@@ -154,11 +146,11 @@ data class TranslationStats(
     val failedBubbles: Int = 0,
     val averageProcessingTime: Long = 0,
     val cacheHits: Int = 0,
-    val cacheMisses: Int = 0,
+    val cacheMisses: Int = 0
 ) {
     val cacheHitRate: Float
         get() = if (cacheHits + cacheMisses > 0) cacheHits.toFloat() / (cacheHits + cacheMisses) else 0f
-    
+
     val successRate: Float
         get() = if (totalBubbles > 0) processedBubbles.toFloat() / totalBubbles else 0f
 }
@@ -169,7 +161,7 @@ data class LogEntry(
     val level: String = "INFO",
     val message: String = "",
     val bubbleIndex: Int? = null,
-    val exception: String? = null,
+    val exception: String? = null
 )
 
 object TranslationDictionary {
@@ -182,7 +174,7 @@ object TranslationDictionary {
         "،،" to "،",
         "ك ل" to "كل",
         "ف ي" to "في",
-        "ع ن" to "عن",
+        "ع ن" to "عن"
     )
 
     private val arabicStopWords = setOf(
@@ -212,7 +204,7 @@ object TranslationDictionary {
 object TranslationCache {
     private const val MAX_CACHE_SIZE = 1000
 
-    // إنشاء LRU Cache آمن
+    // إنشاء LRU Cache آمن للـ Threads
     private val cache = Collections.synchronizedMap(
         object : LinkedHashMap<String, String>(MAX_CACHE_SIZE, 0.75f, true) {
             override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, String>?): Boolean {
@@ -220,8 +212,8 @@ object TranslationCache {
             }
         }
     )
-    
-    // استخدام @Volatile لضمان تحديث القيم بشكل آمن بين المسارات (Threads)
+
+    // استخدام @Volatile لضمان مزامنة البيانات بين المسارات المختلفة بشكل آمن
     @Volatile
     private var stats = TranslationStats()
 
@@ -305,7 +297,9 @@ object LoggerService {
 
     fun getLogs(): List<LogEntry> = logs.toList()
 
-    fun clearLogs() = logs.clear()
+    fun clearLogs() {
+        logs.clear()
+    }
 
     fun setLogging(enabled: Boolean) {
         enableLogging = enabled
@@ -319,9 +313,7 @@ object PerformanceMonitor {
     private val timings = ConcurrentHashMap<String, CopyOnWriteArrayList<Long>>()
 
     /**
-     * دالة جديدة لقياس الوقت بشكل آمن لتعدد المسارات.
-     * الاستخدام: 
-     * val result = PerformanceMonitor.measure("fetchData") { ...code... }
+     * دالة لقياس وقت التنفيذ بشكل آمن ومباشر
      */
     inline fun <T> measure(operationName: String, block: () -> T): T {
         val start = System.currentTimeMillis()
@@ -353,5 +345,7 @@ object PerformanceMonitor {
         return sb.toString()
     }
 
-    fun clear() = timings.clear()
+    fun clear() {
+        timings.clear()
+    }
 }
