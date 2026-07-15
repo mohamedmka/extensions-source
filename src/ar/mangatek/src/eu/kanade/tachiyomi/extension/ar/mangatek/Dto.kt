@@ -1,22 +1,17 @@
 package eu.kanade.tachiyomi.extension.ar.mangatek
 
 import kotlinx.serialization.KSerializer
-import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.descriptors.SerialDescriptor
 import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.encoding.Encoder
-import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonPrimitive
-import java.util.Collections
-import java.util.concurrent.ConcurrentHashMap
 
 class WrappedSerializer<T>(val dataSerializer: KSerializer<T>) : KSerializer<Wrapped<T>> {
-    override val descriptor: SerialDescriptor =
-        dataSerializer.descriptor
+    override val descriptor: SerialDescriptor = dataSerializer.descriptor
 
     override fun deserialize(decoder: Decoder): Wrapped<T> {
         val json = (decoder as kotlinx.serialization.json.JsonDecoder).decodeJsonElement().jsonArray
