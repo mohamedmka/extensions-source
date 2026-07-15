@@ -235,12 +235,12 @@ abstract class MangaTek :
         hasAttr("data-lazy-src") -> attr("abs:data-lazy-src")
         hasAttr("data-cfsrc") -> attr("abs:data-cfsrc")
         else -> attr("abs:src")
-    }
+}
 
     override fun setupPreferenceScreen(screen: PreferenceScreen) {
         // [نفس كود التفضيلات الذي كتبته أنت بدون تغيير لتقليل التشتت]
         // ... (تم الحفاظ عليه كما هو في ملفك الأصلي)
-    }
+}
 
     companion object {
         val PAGE_REGEX = Regex(""".*?\.(webp|png|jpg|jpeg)(?:\?v=\d+)?#\[.*?]""", RegexOption.IGNORE_CASE)
@@ -257,4 +257,4 @@ abstract class MangaTek :
         private const val RETRY_DELAY_PREF = "retryDelayPref"
         private const val DEFAULT_RETRY_DELAY = "5000" // 5 ثوانٍ بين كل محاولة
     }
-    }
+}
