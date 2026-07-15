@@ -137,11 +137,9 @@ abstract class MangaTek :
     override fun pageListParse(response: Response): List<Page> {
         var document = response.asJsoup()
 
-        // Give server-side render script breathing room without triggering an app ANR crash
         try {
             Thread.sleep(translationWaitTime.toLong().coerceAtMost(10000L))
         } catch (e: InterruptedException) {
-            // Restore interrupted status
             Thread.currentThread().interrupt()
         }
 
@@ -170,7 +168,6 @@ abstract class MangaTek :
                     }
                 }
             } catch (e: Exception) {
-                // Ignore transient connectivity down times on loops
             }
             retries++
         }
@@ -222,14 +219,13 @@ abstract class MangaTek :
             }
         }
     }
-    
-// Performs full, standard-safe URI encoding on serialized JSON
+
+    // Performs full, standard-safe URI encoding on serialized JSON
     fun String.toFragment(): String = try {
-        // URLEncoder encodes spaces as '+' which can fail decoding in some setups;
-        // .replace("+", "%20") normalizes it safely.
         "#${URLEncoder.encode(this, Charsets.UTF_8.name()).replace("+", "%20")}"
     } catch (e: Exception) {
         "#${this.replace("#", "%23")}"
+    }
 
     override fun imageUrlParse(response: Response): String = throw UnsupportedOperationException()
 
