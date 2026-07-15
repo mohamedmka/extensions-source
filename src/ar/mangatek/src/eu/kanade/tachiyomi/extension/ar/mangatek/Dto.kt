@@ -20,8 +20,7 @@ class WrappedSerializer<T>(val dataSerializer: KSerializer<T>) : KSerializer<Wra
         return Wrapped(index, value)
     }
 
-    override fun serialize(encoder: Encoder, value: Wrapped<T>): Unit =
-        throw SerializationException("Serialization is not supported")
+    override fun serialize(encoder: Encoder, value: Wrapped<T>): Unit = throw SerializationException("Serialization is not supported")
 }
 
 @Serializable(with = WrappedSerializer::class)
