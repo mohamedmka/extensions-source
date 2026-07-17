@@ -7,20 +7,19 @@ import java.text.SimpleDateFormat
 import java.util.Locale
 
 @Source
-class AnyoneManga : Madara("AnyoneManga", "https://anyonemanga.com", "ar") {
-
+abstract class AnyoneManga : Madara() {
     override val dateFormat = SimpleDateFormat("MM/dd/yyyy", Locale.ROOT)
     override val useLoadMoreRequest = LoadMoreStrategy.Never
     override val useNewChapterEndpoint = true
 
     override fun imageFromElement(element: Element): String? {
-        // 1. التحقق من وجود صورة مشفرة أو بصيغة Base64 (بدون استخدام abs:)
+        // التحقق من وجود صورة بصيغة Base64 أو مشفرة بدون استخدام abs: التي كانت تسبب انهيار محرك الصور
         val encryptedSrc = element.attr("data-encrypted-src")
         if (encryptedSrc.isNotBlank()) {
             return encryptedSrc
         }
 
-        // 2. بدائل احتياطية في حال قام الموقع بتغيير طريقة عرض الصور
+        // بدائل احتياطية قياسية في حال تم تغيير سمات عرض الصور
         return element.attr("data-src").takeIf { it.isNotBlank() }
             ?: element.attr("data-lazy-src").takeIf { it.isNotBlank() }
             ?: element.attr("abs:src")
