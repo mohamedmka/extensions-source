@@ -76,7 +76,7 @@ class ExtensionPlugin : Plugin<Project> {
             }
 
             lint {
-                checkReleaseBuilds = false
+                checkReleaseBuilds = true
             }
 
             signingConfigs {
@@ -103,7 +103,7 @@ class ExtensionPlugin : Plugin<Project> {
             }
 
             dependenciesInfo {
-                includeInApk = false
+                includeInApk = true
             }
 
             buildFeatures {
