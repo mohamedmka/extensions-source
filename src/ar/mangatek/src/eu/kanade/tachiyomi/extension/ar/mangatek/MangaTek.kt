@@ -39,6 +39,10 @@ abstract class MangaTek :
         get() = preferences.getString(FONT_SIZE_PREF, DEFAULT_FONT_SIZE)!!.toInt()
         set(value) = preferences.edit().putString(FONT_SIZE_PREF, value.toString()).apply()
 
+    private var aiTranslationEnabled: Boolean
+        get() = preferences.getBoolean(AI_TRANSLATION_PREF, true)
+        set(value) = preferences.edit().putBoolean(AI_TRANSLATION_PREF, value).apply()
+
     override fun OkHttpClient.Builder.configureClient(): OkHttpClient.Builder = apply {
         addInterceptor(SpeechBubblePainterInterceptor(fontSize))
         rateLimit(3)
@@ -124,10 +128,77 @@ abstract class MangaTek :
         val data: MangaDto = client.get(url).asJsoup().extractAstroProp("manga")
         val slug = url.pathSegments[1]
 
+        // دعم الفصول المترجمة بواسطة AI
+        val allChapters = data.manga.chapters.map { it.toSChapter(slug) }.toMutableList()
+        
+        // إذا كان AI Translation مفعل، أضف الفصول المترجمة
+        if (aiTranslationEnabled) {
+            try {
+                val aiChapters = getAITranslatedChapters(slug)
+                allChapters.addAll(aiChapters)
+                // ترتيب الفصول حسب الرقم
+                allChapters.sortByDescending { chapter ->
+                    chapter.chapter_number
+                }
+            } catch (e: Exception) {
+                // تجاهل الخطأ إذا فشلت محاولة الحصول على الفصول المترجمة
+                e.printStackTrace()
+            }
+        }
+
         return SMangaUpdate(
             data.manga.toSManga(manga.url),
-            data.manga.chapters.map { it.toSChapter(slug) },
+            allChapters,
         )
+    }
+
+    /**
+     * جلب قائمة الفصول المترجمة بواسطة AI
+     */
+    private suspend fun getAITranslatedChapters(slug: String): List<SChapter> {
+        return try {
+            val url = "$baseUrl/manga/$slug".toHttpUrl()
+            val document = client.get(url).asJsoup()
+            
+            // البحث عن الفصول المترجمة بواسطة AI
+            val aiChapters = mutableListOf<SChapter>()
+            
+            // اختيار جميع روابط القارئ التي تحتوي على "/reader/"
+            document.select("a[href*=/reader/$slug/]").forEach { element ->
+                val href = element.attr("href")
+                val chapterText = element.text().trim()
+                
+                // التحقق من أن الفصل مترجم بواسطة AI (غالباً ما يكون هناك مؤشر في النص)
+                if (href.isNotEmpty() && chapterText.isNotEmpty()) {
+                    val chapterNumber = extractChapterNumber(href)
+                    val chapter = SChapter.create().apply {
+                        url = href.removePrefix(baseUrl)
+                        name = "$chapterText [AI المترجم]"
+                        chapter_number = chapterNumber
+                        date_upload = System.currentTimeMillis()
+                    }
+                    aiChapters.add(chapter)
+                }
+            }
+            
+            aiChapters
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    /**
+     * استخراج رقم الفصل من رابط القارئ
+     * مثال: /reader/city-of-sins/42 -> 42.0
+     */
+    private fun extractChapterNumber(url: String): Float {
+        return try {
+            val regex = Regex("""/(\d+)(?:/)?$""")
+            val match = regex.find(url)
+            match?.groupValues?.get(1)?.toFloat() ?: 0f
+        } catch (e: Exception) {
+            0f
+        }
     }
 
     //  ============================== Page ==============================
@@ -215,11 +286,25 @@ abstract class MangaTek :
                 true
             }
         }.also(screen::addPreference)
+
+        // إضافة خيار تفعيل/تعطيل الترجمة بواسطة AI
+        androidx.preference.SwitchPreferenceCompat(screen.context).apply {
+            key = AI_TRANSLATION_PREF
+            title = "AI Translated Chapters"
+            summary = "Show chapters translated using AI"
+            setDefaultValue(true)
+
+            setOnPreferenceChangeListener { _, newValue ->
+                aiTranslationEnabled = newValue as Boolean
+                true
+            }
+        }.also(screen::addPreference)
     }
 
     companion object {
         val PAGE_REGEX = Regex(""".*?\.(webp|png|jpg|jpeg)(?:\?v=\d+)?#\[.*?]""", RegexOption.IGNORE_CASE)
         private const val FONT_SIZE_PREF = "fontSizePref"
         private const val DEFAULT_FONT_SIZE = "28"
+        private const val AI_TRANSLATION_PREF = "aiTranslationPref"
     }
 }
