@@ -130,7 +130,6 @@ abstract class MangaTek :
 
         // دعم الفصول المترجمة بواسطة AI
         val allChapters = data.manga.chapters.map { it.toSChapter(slug) }.toMutableList()
-        
         // إذا كان AI Translation مفعل، أضف الفصول المترجمة
         if (aiTranslationEnabled) {
             try {
@@ -155,36 +154,34 @@ abstract class MangaTek :
     /**
      * جلب قائمة الفصول المترجمة بواسطة AI
      */
-    private suspend fun getAITranslatedChapters(slug: String): List<SChapter> {
-        return try {
-            val url = "$baseUrl/manga/$slug".toHttpUrl()
-            val document = client.get(url).asJsoup()
-            
-            // البحث عن الفصول المترجمة بواسطة AI
-            val aiChapters = mutableListOf<SChapter>()
-            
-            // اختيار جميع روابط القارئ التي تحتوي على "/reader/"
-            document.select("a[href*=/reader/$slug/]").forEach { element ->
-                val href = element.attr("href")
-                val chapterText = element.text().trim()
-                
-                // التحقق من أن الفصل مترجم بواسطة AI (غالباً ما يكون هناك مؤشر في النص)
-                if (href.isNotEmpty() && chapterText.isNotEmpty()) {
-                    val chapterNumber = extractChapterNumber(href)
-                    val chapter = SChapter.create().apply {
-                        url = href.removePrefix(baseUrl)
-                        name = "$chapterText [AI المترجم]"
-                        chapter_number = chapterNumber
-                        date_upload = System.currentTimeMillis()
-                    }
-                    aiChapters.add(chapter)
+    private suspend fun getAITranslatedChapters(slug: String): List<SChapter> = try {
+        val url = "$baseUrl/manga/$slug".toHttpUrl()
+        val document = client.get(url).asJsoup()
+
+        // البحث عن الفصول المترجمة بواسطة AI
+        val aiChapters = mutableListOf<SChapter>()
+
+        // اختيار جميع روابط القارئ التي تحتوي على "/reader/"
+        document.select("a[href*=/reader/$slug/]").forEach { element ->
+            val href = element.attr("href")
+            val chapterText = element.text().trim()
+
+            // التحقق من أن الفصل مترجم بواسطة AI (غالباً ما يكون هناك مؤشر في النص)
+            if (href.isNotEmpty() && chapterText.isNotEmpty()) {
+                val chapterNumber = extractChapterNumber(href)
+                val chapter = SChapter.create().apply {
+                    url = href.removePrefix(baseUrl)
+                    name = "$chapterText [AI المترجم]"
+                    chapter_number = chapterNumber
+                    date_upload = System.currentTimeMillis()
                 }
+                aiChapters.add(chapter)
             }
-            
-            aiChapters
-        } catch (e: Exception) {
-            emptyList()
         }
+
+        aiChapters
+    } catch (e: Exception) {
+        emptyList()
     }
 
     /**
