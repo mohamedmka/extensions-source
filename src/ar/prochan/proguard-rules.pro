@@ -1,0 +1,2 @@
+-keep class eu.kanade.tachiyomi.extension.ar.prochan.** { *; }
+-keepclassmembers class eu.kanade.tachiyomi.extension.ar.prochan.** { *; }
