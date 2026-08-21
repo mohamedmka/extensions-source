@@ -6,9 +6,9 @@ plugins {
 
 keiyoushi {
     name = "ProChan"
-    versionCode = 5
+    versionCode = 1
     contentWarning = ContentWarning.SAFE
-    libVersion = "1.6"
+    libVersion = "1.4"
 
     source {
         lang = "ar"
