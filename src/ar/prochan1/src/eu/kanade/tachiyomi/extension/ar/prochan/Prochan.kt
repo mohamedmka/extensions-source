@@ -19,15 +19,10 @@ class Prochan : ParsedHttpSource() {
 
     private val imageBaseUrl = "https://app.procomic.pro"
 
-    // -------------------------------------------------------------------------
-    // Popular
-    // -------------------------------------------------------------------------
-
     override fun popularMangaRequest(page: Int) =
         GET("$baseUrl/series?page=$page", headers)
 
-    override fun popularMangaSelector() =
-        "a[href*='/ar/'][href!='/ar/']"
+    override fun popularMangaSelector() = "a[href*='/ar/'][href!='/ar/']"
 
     override fun popularMangaFromElement(element: Element): SManga {
         return SManga.create().apply {
@@ -42,37 +37,21 @@ class Prochan : ParsedHttpSource() {
         }
     }
 
-    override fun popularMangaNextPageSelector() =
-        "a[rel='next']"
-
-    // -------------------------------------------------------------------------
-    // Latest
-    // -------------------------------------------------------------------------
+    override fun popularMangaNextPageSelector() = "a[rel='next']"
 
     override fun latestUpdatesRequest(page: Int) =
         GET("$baseUrl/updates?page=$page", headers)
 
-    override fun latestUpdatesSelector() =
-        "a[href*='/chapter/']"
+    override fun latestUpdatesSelector() = "a[href*='/chapter/']"
 
     override fun latestUpdatesFromElement(element: Element): SManga {
-        val chapterUrl = element.attr("href")
-
         return SManga.create().apply {
-            url = chapterUrl
-                .substringBeforeLast("-")
-                .removePrefix(baseUrl)
-
+            url = element.attr("href").removePrefix(baseUrl)
             title = element.text().trim()
         }
     }
 
-    override fun latestUpdatesNextPageSelector() =
-        "a[rel='next']"
-
-    // -------------------------------------------------------------------------
-    // Search
-    // -------------------------------------------------------------------------
+    override fun latestUpdatesNextPageSelector() = "a[rel='next']"
 
     override fun searchMangaRequest(
         page: Int,
@@ -83,61 +62,39 @@ class Prochan : ParsedHttpSource() {
         headers,
     )
 
-    override fun searchMangaSelector() =
-        popularMangaSelector()
+    override fun searchMangaSelector() = popularMangaSelector()
 
     override fun searchMangaFromElement(element: Element): SManga =
         popularMangaFromElement(element)
 
-    override fun searchMangaNextPageSelector() =
-        "a[rel='next']"
-
-    // -------------------------------------------------------------------------
-    // Manga details
-    // -------------------------------------------------------------------------
+    override fun searchMangaNextPageSelector() = "a[rel='next']"
 
     override fun mangaDetailsParse(document: Document): SManga {
         return SManga.create().apply {
-
-            title = document
-                .selectFirst("h1")
-                ?.text()
-                ?.trim()
-                ?: ""
+            title = document.selectFirst("h1")?.text()?.trim() ?: ""
 
             description = document
                 .selectFirst("meta[name='description']")
                 ?.attr("content")
                 ?.trim()
 
-            thumbnail_url = document
-                .selectFirst("img")
-                ?.let { img ->
-                    img.absUrl("src").ifBlank {
-                        img.absUrl("data-src")
-                    }
+            thumbnail_url = document.selectFirst("img")?.let { img ->
+                img.absUrl("src").ifBlank {
+                    img.absUrl("data-src")
                 }
+            }
 
             status = SManga.UNKNOWN
         }
     }
 
-    // -------------------------------------------------------------------------
-    // Chapters
-    // -------------------------------------------------------------------------
-
-    override fun chapterListSelector() =
-        "a[href*='/chapter/']"
+    override fun chapterListSelector() = "a[href*='/chapter/']"
 
     override fun chapterFromElement(element: Element): SChapter {
         val name = element.text().trim()
 
         return SChapter.create().apply {
-
-            url = element
-                .attr("href")
-                .removePrefix(baseUrl)
-
+            url = element.attr("href").removePrefix(baseUrl)
             this.name = name
 
             chapter_number = Regex(
@@ -156,25 +113,11 @@ class Prochan : ParsedHttpSource() {
         }
     }
 
-    // -------------------------------------------------------------------------
-    // Pages
-    // -------------------------------------------------------------------------
-
     override fun pageListParse(document: Document): List<Page> {
-
-        /*
-         * ProComic لا يضع روابط صور الصفحات بشكل مباشر في HTML
-         * صفحة الفصل.
-         *
-         * إذا كانت روابط app.procomic.pro موجودة داخل HTML، نلتقطها.
-         */
-
         val imageUrls = document
             .select("img[src], img[data-src], source[src], source[srcset]")
             .flatMap { element ->
-
                 buildList {
-
                     val src = element.absUrl("src")
                     if (src.isNotBlank()) {
                         add(src)
@@ -187,20 +130,16 @@ class Prochan : ParsedHttpSource() {
 
                     val srcSet = element.attr("srcset")
                     if (srcSet.isNotBlank()) {
-                        add(
-                            srcSet
-                                .split(",")
-                                .firstOrNull()
-                                ?.trim()
-                                ?.substringBefore(" ")
-                                .orEmpty(),
-                        )
+                        srcSet
+                            .split(",")
+                            .map { it.trim().substringBefore(" ") }
+                            .filter { it.isNotBlank() }
+                            .forEach { add(it) }
                     }
                 }
             }
             .filter {
-                it.startsWith(imageBaseUrl) &&
-                    it.contains("/chapters/")
+                it.startsWith(imageBaseUrl) && it.contains("/chapters/")
             }
             .distinct()
 
@@ -225,10 +164,5 @@ class Prochan : ParsedHttpSource() {
             }
     }
 
-    // -------------------------------------------------------------------------
-    // Filters
-    // -------------------------------------------------------------------------
-
-    override fun getFilterList() =
-        FilterList()
+    override fun getFilterList(): FilterList = FilterList()
 }
