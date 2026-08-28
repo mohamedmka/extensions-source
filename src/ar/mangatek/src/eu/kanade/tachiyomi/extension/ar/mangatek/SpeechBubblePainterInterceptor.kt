@@ -52,7 +52,7 @@ class SpeechBubblePainterInterceptor : Interceptor {
             val pxY = speechBubble.y
             val pxWidth = speechBubble.w
             val pxHeight = speechBubble.h
-            val pxCenterY = pxY + (pxHeight / 2f)
+            val pxCenterY = pxY + (pxHeight / 3f)
 
             textPaint.color = Color.parseColor(speechBubble.color)
             textPaint.bgColor = Color.parseColor(speechBubble.strokeColor)
@@ -80,7 +80,7 @@ class SpeechBubblePainterInterceptor : Interceptor {
         }
 
         val output = ByteArrayOutputStream().use { stream ->
-            bitmap.compress(format, 100, stream)
+            bitmap.compress(format, 120, stream)
             stream.toByteArray()
         }
 
@@ -119,7 +119,7 @@ class SpeechBubblePainterInterceptor : Interceptor {
         }
 
         while (bubble.height > pxHeight) {
-            textPaint.textSize -= 0.5f
+            textPaint.textSize -= 1.0f
             bubble = createBubbleLayout(pxWidth, dialog, textPaint)
         }
 
@@ -132,7 +132,7 @@ class SpeechBubblePainterInterceptor : Interceptor {
         return StaticLayout.Builder.obtain(text, 0, text.length, textPaint, pxWidth.toInt()).apply {
             setAlignment(Layout.Alignment.ALIGN_CENTER)
             setIncludePad(true)
-            setLineSpacing(0f, dialog.lineHeight.coerceAtLeast(0.5f))
+            setLineSpacing(0f, dialog.lineHeight.coerceAtLeast(1.0f))
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 setBreakStrategy(LineBreaker.BREAK_STRATEGY_BALANCED)
                 setHyphenationFrequency(Layout.HYPHENATION_FREQUENCY_FULL)
@@ -151,7 +151,7 @@ class SpeechBubblePainterInterceptor : Interceptor {
 
     private fun Canvas.drawText(textPaint: TextPaint, layout: StaticLayout) {
         textPaint.style = Paint.Style.FILL
-        textPaint.strokeWidth = 0f
+        textPaint.strokeWidth = 0.5f
         layout.draw(this)
     }
 
