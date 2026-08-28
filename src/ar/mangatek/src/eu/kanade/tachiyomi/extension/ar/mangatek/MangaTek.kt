@@ -32,7 +32,7 @@ abstract class MangaTek : KeiSource() {
 
     override fun OkHttpClient.Builder.configureClient(): OkHttpClient.Builder = apply {
         addInterceptor(SpeechBubblePainterInterceptor())
-        rateLimit(6)
+        rateLimit(4)
     }
 
     private fun Response.toMangasPage(): MangasPage {
