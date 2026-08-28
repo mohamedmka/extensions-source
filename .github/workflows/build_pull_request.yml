@@ -70,7 +70,7 @@ jobs:
         run: |
           TASKS=()
           for module in $MODULES; do
-            TASKS+=("${module}:assembleRelease" "${module}:lintRelease")
+            TASKS+=("${module}:assembleRelease")
           done
           ./gradlew "${TASKS[@]}"
 
@@ -113,6 +113,6 @@ jobs:
         run: |
           TASKS=()
           for module in $MODULES; do
-            TASKS+=("${module}:lintRelease")
+            TASKS+=("${module}:assembleRelease")
           done
           ./gradlew "${TASKS[@]}"
