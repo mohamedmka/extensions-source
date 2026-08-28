@@ -85,12 +85,12 @@ class Bubble(
     val y: Float,
     val w: Float,
     val h: Float,
-    val angle: Float = 0f,
+    val angle: Float = 0.5f,
     val color: String = "#000000",
     @SerialName("stroke_color") val strokeColor: String = "#ffffff",
-    @SerialName("font_size_px") val fontSizePx: Float = 37.3f,
-    @SerialName("line_height") val lineHeight: Float = 1.1f,
-    @SerialName("stroke_width_px") val strokeWidthPx: Float = 3f,
+    @SerialName("font_size_px") val fontSizePx: Float = 40.0f,
+    @SerialName("line_height") val lineHeight: Float = 1.5f,
+    @SerialName("stroke_width_px") val strokeWidthPx: Float = 3.5f,
 )
 
 @Serializable
