@@ -181,10 +181,7 @@ abstract class MangaTek : KeiSource() {
         return String(cipher.doFinal(ciphertext + tag), Charsets.UTF_8).parseAs<OverlayData>()
     }
 
-    companion object {
-        val PAGE_REGEX = Regex(""".*?\.(webp|png|jpg|jpeg)(?:\?v=\d+)?#\[.*?]""", RegexOption.IGNORE_CASE)
-        private val KEY = "ff453871399fe268588a0936b45376022d85ed0fd1292001d5102f6a30291dc1"
-// Translation configuration - اضبط أو اقرأها من تفضيلات لاحقاً
+    // Translation configuration - اضبط أو اقرأها من تفضيلات لاحقاً
         @Volatile
         var TRANSLATION_ENABLED: Boolean = true
 
