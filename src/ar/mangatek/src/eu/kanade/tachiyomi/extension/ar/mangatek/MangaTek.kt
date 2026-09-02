@@ -187,7 +187,7 @@ abstract class MangaTek : KeiSource() {
 
         // Translation configuration - اضبط أو اقرأها من تفضيلات لاحقاً
         @Volatile
-        var TRANSLATION_ENABLED: Boolean = false
+        var TRANSLATION_ENABLED: Boolean = true
 
         // مثال واجهة JSON شبيهة بـ LibreTranslate
         @Volatile
