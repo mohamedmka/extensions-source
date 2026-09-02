@@ -12,13 +12,27 @@ import android.text.StaticLayout
 import android.text.TextPaint
 import eu.kanade.tachiyomi.extension.ar.mangatek.MangaTek.Companion.PAGE_REGEX
 import keiyoushi.utils.parseAs
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import okhttp3.ResponseBody.Companion.toResponseBody
 import java.io.ByteArrayOutputStream
+import java.util.concurrent.ConcurrentHashMap
 
 class SpeechBubblePainterInterceptor : Interceptor {
+
+    // Simple in-memory cache to avoid repeated translation calls for same text
+    private val translationCache = ConcurrentHashMap<String, String>()
+
+    @Serializable
+    private data class TranslateReq(val q: String, val source: String = "auto", val target: String, val format: String = "text")
 
     override fun intercept(chain: Interceptor.Chain): Response {
         val request = chain.request()
@@ -33,6 +47,57 @@ class SpeechBubblePainterInterceptor : Interceptor {
         val response = chain.proceed(request.newBuilder().url(url).build())
         if (!response.isSuccessful || speechBubbles.isEmpty()) {
             return response
+        }
+
+        // Pre-translate bubble texts (synchronously). If translation disabled or not configured, we keep original.
+        if (MangaTek.TRANSLATION_ENABLED && MangaTek.TRANSLATION_URL.isNotBlank()) {
+            val httpClient = okhttp3.OkHttpClient.Builder().build()
+            for (bubble in speechBubbles) {
+                val original = bubble.text
+                val cached = translationCache[original]
+                if (cached != null) {
+                    bubble.translatedText = cached
+                    continue
+                }
+
+                try {
+                    val payload = Json.encodeToString(TranslateReq.serializer(), TranslateReq(original, target = MangaTek.TRANSLATION_TARGET))
+                    val body = payload.toRequestBody("application/json".toMediaType())
+                    val reqBuilder = Request.Builder()
+                        .url(MangaTek.TRANSLATION_URL)
+                        .post(body)
+
+                    MangaTek.TRANSLATION_API_KEY?.let { key ->
+                        // Many services expect Authorization: Bearer <key> but adjust if your provider differs
+                        reqBuilder.header("Authorization", "Bearer $key")
+                    }
+
+                    val transReq = reqBuilder.build()
+                    httpClient.newCall(transReq).execute().use { transResp ->
+                        if (transResp.isSuccessful) {
+                            val text = transResp.body?.string().orEmpty()
+                            val elem = Json.parseToJsonElement(text)
+
+                            // Try common shapes: { "translatedText": "..." } OR { "data": { "translations": [ {"translatedText":"..."} ] } } OR { "translated_text": "..." }
+                            val translated: String? = when {
+                                elem.jsonObject["translatedText"] != null -> elem.jsonObject["translatedText"]!!.jsonPrimitive.content
+                                elem.jsonObject["translated_text"] != null -> elem.jsonObject["translated_text"]!!.jsonPrimitive.content
+                                elem.jsonObject["result"] != null -> elem.jsonObject["result"]!!.jsonPrimitive.content
+                                elem.jsonObject["data"]?.jsonObject?.get("translations")?.jsonArray?.getOrNull(0)?.jsonObject?.get("translatedText") != null ->
+                                    elem.jsonObject["data"]!!.jsonObject["translations"]!!.jsonArray[0].jsonObject["translatedText"]!!.jsonPrimitive.content
+                                else -> null
+                            }
+
+                            if (!translated.isNullOrBlank()) {
+                                bubble.translatedText = translated
+                                translationCache[original] = translated
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    // Ignore translation failures and draw original text
+                }
+            }
         }
 
         val options = BitmapFactory.Options().apply {
@@ -54,14 +119,33 @@ class SpeechBubblePainterInterceptor : Interceptor {
             val pxHeight = speechBubble.h
             val pxCenterY = pxY + (pxHeight / 2f)
 
+            // If AI translation exists, use it, otherwise original text
+            val drawText = speechBubble.translatedText ?: speechBubble.text
+
             textPaint.color = Color.parseColor(speechBubble.color)
+            // bgColor is used in original implementation for stroke background; keep usage (extension may exist)
             textPaint.bgColor = Color.parseColor(speechBubble.strokeColor)
             textPaint.textSize = speechBubble.fontSizePx
             textPaint.strokeWidth = speechBubble.strokeWidthPx
 
-            val bubble = createBubble(pxHeight, pxWidth, speechBubble, textPaint)
-            val finalY = getYAxis(pxY, pxHeight, pxCenterY, textPaint, bubble)
-            canvas.draw(textPaint, bubble, speechBubble.angle, pxX, finalY)
+            // create a temporary Bubble instance with translated text but same layout params
+            val drawBubble = Bubble(
+                drawText,
+                speechBubble.x,
+                speechBubble.y,
+                speechBubble.w,
+                speechBubble.h,
+                speechBubble.angle,
+                speechBubble.color,
+                speechBubble.strokeColor,
+                speechBubble.fontSizePx,
+                speechBubble.lineHeight,
+                speechBubble.strokeWidthPx,
+            )
+
+            val bubbleLayout = createBubble(pxHeight, pxWidth, drawBubble, textPaint)
+            val finalY = getYAxis(pxY, pxHeight, pxCenterY, textPaint, bubbleLayout)
+            canvas.draw(textPaint, bubbleLayout, speechBubble.angle, pxX, finalY)
         }
 
         val ext = url.substringBefore("#")
