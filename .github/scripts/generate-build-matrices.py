@@ -10,10 +10,11 @@ EXTENSION_REGEX = re.compile(r"^src/(?P<lang>\w+)/(?P<extension>\w+)")
 MULTISRC_LIB_REGEX = re.compile(r"^lib-multisrc/(?P<multisrc>\w+)")
 LIB_REGEX = re.compile(r"^lib/(?P<lib>\w+)")
 MODULE_REGEX = re.compile(r"^:src:(?P<lang>\w+):(?P<extension>\w+)$")
-PKG_NAME_REGEX = re.compile(r"""pkgName\s*=\s*["']([^"']+)["']""")
+PKG_NAME_REGEX = re.compile(r"""pkgName\s*=\s*[\"']([^\"']+)[\"']""")
 CORE_FILES_REGEX = re.compile(
     r"^(common/|compiler/|core/|gradle/|build\.gradle\.kts|gradle\.properties|settings\.gradle\.kts|.github/scripts)"
 )
+
 
 def run_command(command: str) -> str:
     result = subprocess.run(command, capture_output=True, text=True, shell=True)
@@ -114,6 +115,7 @@ def resolve_multisrc_lib(libs: set[str]) -> set[str]:
 
     return multisrcs
 
+
 def resolve_ext(multisrcs: set[str], libs: set[str]) -> set[tuple[str, str]]:
     """
     returns all extensions which depend on any of the
@@ -147,6 +149,7 @@ def resolve_ext(multisrcs: set[str], libs: set[str]) -> set[tuple[str, str]]:
                 extensions.add((lang.name, extension.name))
 
     return extensions
+
 
 def get_module_list(ref: str) -> tuple[list[str], list[str], list[str]]:
     diff_output = run_command(f"git diff --name-status {ref}").splitlines()
@@ -215,6 +218,7 @@ def get_module_list(ref: str) -> tuple[list[str], list[str], list[str]]:
 
     return sorted(modules), sorted(deleted), sorted(lint_modules)
 
+
 def get_all_modules(ref: str) -> tuple[list[str], list[str]]:
     modules = []
     deleted = []
@@ -236,14 +240,23 @@ def get_all_lint_modules() -> list[str]:
     return sorted(modules)
 
 
+# Backport of itertools.batched for Python versions < 3.12
+def batched(iterable, n):
+    it = iter(iterable)
+    while True:
+        chunk = list(itertools.islice(it, n))
+        if not chunk:
+            break
+        yield chunk
+
+
 def create_matrix(modules: list[str]) -> dict:
     return {
         "chunk": [
             {"number": i + 1, "modules": chunk}
-            for i, chunk in enumerate(itertools.batched(
-                modules,
-                int(os.getenv("CI_CHUNK_SIZE", 65))
-            ))
+            for i, chunk in enumerate(
+                batched(modules, int(os.getenv("CI_CHUNK_SIZE", 65)))
+            )
         ]
     }
 
