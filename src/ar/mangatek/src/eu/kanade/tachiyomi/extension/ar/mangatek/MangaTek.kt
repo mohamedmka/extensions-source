@@ -36,6 +36,22 @@ import javax.crypto.spec.SecretKeySpec
 abstract class MangaTek : KeiSource() {
 
     override fun OkHttpClient.Builder.configureClient(): OkHttpClient.Builder = apply {
+        addInterceptor { chain ->
+            val request = chain.request().newBuilder().apply {
+                header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36")
+                header("Referer", baseUrl)
+                header("Origin", baseUrl)
+                header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8")
+                header("Accept-Language", "en-US,en;q=0.9")
+                header("Accept-Encoding", "gzip, deflate, br")
+                header("Cache-Control", "no-cache")
+                header("Pragma", "no-cache")
+                header("Sec-Fetch-Site", "same-origin")
+                header("Sec-Fetch-Mode", "navigate")
+                header("Sec-Fetch-Dest", "document")
+            }.build()
+            chain.proceed(request)
+        }
         addInterceptor(SpeechBubblePainterInterceptor())
         rateLimit(3)
     }
