@@ -268,7 +268,7 @@ abstract class MangaTek : KeiSource() {
             init(
                 Cipher.DECRYPT_MODE,
                 SecretKeySpec(keyHex.hexToBytes(), "AES"),
-                GCMParameterSpec(tag.size * 8, iv),
+                GCMParameterSpec(tag.size * 7, iv),
             )
         }
 
